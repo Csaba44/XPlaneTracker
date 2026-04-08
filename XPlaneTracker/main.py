@@ -2,8 +2,11 @@ import json
 import time
 import os
 import gzip
+import requests
 from datetime import datetime
 from XPlaneConnectX import XPlaneConnectX
+
+API_URL = "http://127.0.0.1:8000/api/flights"
 
 callsign = input("Enter callsign (optional): ").strip() or "unknown"
 flight_number = input("Enter flight number (optional): ").strip() or "unknown"
@@ -73,3 +76,21 @@ except KeyboardInterrupt:
         json.dump(flight_path_data, outfile, separators=(',', ':'))
         
     print(f"\nData saved to {filename}")
+
+    try:
+        print(f"Uploading {filename} to server...")
+        with open(filename, 'rb') as f:
+            files = {'flight_file': (os.path.basename(filename), f, 'application/gzip')}
+            headers = {'Accept': 'application/json'}
+            response = requests.post(API_URL, files=files, headers=headers)
+
+        if response.status_code == 201:
+            print("Upload successful!")
+            os.remove(filename)
+            print(f"Deleted local file: {filename}")
+        else:
+            print(f"Upload failed with status code {response.status_code}.")
+            print(response.text)
+            
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to connect to the server. The file was kept locally. Error: {e}")
