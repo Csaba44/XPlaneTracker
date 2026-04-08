@@ -8,6 +8,81 @@ import argparse
 from datetime import datetime
 from XPlaneConnectX import XPlaneConnectX
 
+# ---------------------------------------------------------------------------
+# Pretty Console UI (Rich)
+# ---------------------------------------------------------------------------
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich import box
+from rich.prompt import Prompt
+from rich.live import Live
+from rich.layout import Layout
+
+console = Console()
+
+log_lines = []
+
+def log(msg):
+    log_lines.append(msg)
+    if len(log_lines) > 300:
+        log_lines.pop(0)
+
+def header():
+    title = Text("CSABOLANTA", style="bold magenta")
+    subtitle = Text("X-Plane Flight Tracker", style="dim")
+    console.print(
+        Panel.fit(
+            Text.assemble(title, "\n", subtitle),
+            border_style="magenta",
+            box=box.ROUNDED
+        )
+    )
+
+def info(msg):
+    console.print(f"[bold cyan]ℹ[/bold cyan] {msg}")
+
+def ok(msg):
+    console.print(f"[bold green]✔[/bold green] {msg}")
+
+def warn(msg):
+    console.print(f"[bold yellow]⚠[/bold yellow] {msg}")
+
+def err(msg):
+    console.print(f"[bold red]✖[/bold red] {msg}")
+
+def step(msg):
+    console.print(f"[bold white]➜[/bold white] {msg}")
+
+def landing(msg):
+    console.print(Panel(msg, border_style="green", box=box.ROUNDED))
+
+def tracking_banner():
+    return Panel(
+        "[bold green]Tracking started[/bold green]\n"
+        "Press [bold red]Ctrl+C[/bold red] to stop and upload flight.",
+        border_style="green",
+        box=box.ROUNDED
+    )
+
+def build_layout():
+    layout = Layout()
+    layout.split(
+        Layout(name="header", size=5),
+        Layout(name="body")
+    )
+    return layout
+
+def build_log_panel():
+    return Panel(
+        "\n".join(log_lines[-30:]),
+        title="[bold cyan]Live Log[/bold cyan]",
+        border_style="cyan",
+        box=box.ROUNDED
+    )
+
+# ---------------------------------------------------------------------------
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--logout", action="store_true")
@@ -24,66 +99,89 @@ else:
 API_FLIGHTS_URL = f"{API_BASE_URL}/flights"
 API_USER_URL = f"{API_BASE_URL}/user"
 
+header()
+
 if args.logout:
     if os.path.exists(TOKEN_FILE):
         os.remove(TOKEN_FILE)
-        print("Logged out successfully. Saved token has been deleted.")
+        ok("Logged out successfully. Saved token has been deleted.")
     else:
-        print("You are not currently logged in.")
+        warn("You are not currently logged in.")
     exit(0)
 
-print(f"--- CSABOLANTA ---")
-print(f"Mode: {'DEVELOPMENT' if args.dev else 'PRODUCTION'}")
+console.print(
+    Panel.fit(
+        f"[bold]Mode:[/bold] {'[bold yellow]DEVELOPMENT[/bold yellow]' if args.dev else '[bold green]PRODUCTION[/bold green]'}",
+        border_style="cyan",
+        box=box.ROUNDED
+    )
+)
 
 if os.path.exists(TOKEN_FILE):
     with open(TOKEN_FILE, "r") as f:
         TOKEN = f.read().strip()
+    ok("Saved API Key loaded.")
 else:
-    print("Authentication required.")
-    print("To get your API key:")
-    print("1. Log in to the CSABOLANTA web dashboard.")
-    print("2. Click 'Generate API Key' in the left sidebar.")
+    warn("Authentication required.")
+    console.print(
+        Panel(
+            "[bold]To get your API key:[/bold]\n"
+            "[cyan]1.[/cyan] Log in to the CSABOLANTA web dashboard.\n"
+            "[cyan]2.[/cyan] Click [bold]'Generate API Key'[/bold] in the left sidebar.",
+            border_style="yellow",
+            box=box.ROUNDED
+        )
+    )
     
-    TOKEN = input("\nPaste your API Key here: ").strip()
+    TOKEN = Prompt.ask("[bold cyan]Paste your API Key[/bold cyan]").strip()
     
     if not TOKEN:
-        print("No API Key provided. Exiting.")
+        err("No API Key provided. Exiting.")
         exit(1)
         
     with open(TOKEN_FILE, "w") as f:
         f.write(TOKEN)
-    print("API Key saved securely.\n")
+    ok("API Key saved securely.")
 
-print("Verifying authentication...")
+step("Verifying authentication...")
 try:
     auth_headers = {
         'Accept': 'application/json',
         'Authorization': f'Bearer {TOKEN}'
     }
-    user_response = requests.get(API_USER_URL, headers=auth_headers)
+
+    with console.status("[bold cyan]Connecting to server...[/bold cyan]", spinner="dots"):
+        user_response = requests.get(API_USER_URL, headers=auth_headers)
     
     if user_response.status_code == 200:
         user_data = user_response.json()
         name = user_data.get('name', 'Testvér')
-        print(f"Hallo, {name}!\n")
+        ok(f"Authenticated as [bold]{name}[/bold].")
     else:
-        print("Invalid or expired API Key.")
+        err("Invalid or expired API Key.")
         if os.path.exists(TOKEN_FILE):
             os.remove(TOKEN_FILE)
-        print("Logged out automatically. Please run the script again to provide a new API key.")
+        warn("Logged out automatically. Please run the script again to provide a new API key.")
         exit(1)
+
 except requests.exceptions.RequestException as e:
-    print(f"Failed to connect to the server for authentication: {e}")
+    err(f"Failed to connect to the server for authentication: {e}")
     exit(1)
 
 HOST_IP = args.host
 
-print(f"XPlane IP: {HOST_IP}")
-print(f"API: {API_FLIGHTS_URL}\n")
+console.print(
+    Panel(
+        f"[bold]X-Plane IP:[/bold] [cyan]{HOST_IP}[/cyan]\n"
+        f"[bold]API Endpoint:[/bold] [green]{API_FLIGHTS_URL}[/green]",
+        border_style="blue",
+        box=box.ROUNDED
+    )
+)
 
-callsign = input("Enter callsign (optional): ").strip() or "unknown"
-flight_number = input("Enter flight number (optional): ").strip() or "unknown"
-airline = input("Enter airline (optional): ").strip() or "unknown"
+callsign = Prompt.ask("[bold magenta]Enter callsign[/bold magenta]", default="unknown").strip() or "unknown"
+flight_number = Prompt.ask("[bold magenta]Enter flight number[/bold magenta]", default="unknown").strip() or "unknown"
+airline = Prompt.ask("[bold magenta]Enter airline[/bold magenta]", default="unknown").strip() or "unknown"
 
 os.makedirs("flights", exist_ok=True)
 
@@ -100,7 +198,9 @@ drefs_to_subscribe = [
     ("sim/flightmodel/position/groundspeed", 50)
 ]
 
+step("Subscribing to X-Plane DataRefs...")
 xpc.subscribeDREFs(drefs_to_subscribe)
+ok("Subscribed successfully.")
 
 flight_path_data = {
     "metadata": {
@@ -154,7 +254,17 @@ def landing_monitor():
                 lat = lat_dref.get("value", 0)
                 lon = lon_dref.get("value", 0)
                 
-                print(f"\n---> LANDING RECORDED: {touchdown_fpm:.0f} FPM, {max_g:.2f} G <---")
+                landing(
+                    f"[bold green]LANDING RECORDED[/bold green]\n\n"
+                    f"[bold]Touchdown:[/bold] {touchdown_fpm:.0f} FPM\n"
+                    f"[bold]Max G:[/bold] {max_g:.2f} G\n"
+                    f"[bold]Position:[/bold] {lat:.5f}, {lon:.5f}"
+                )
+                
+                log(
+                    f"[bold green]LANDING[/bold green] "
+                    f"Touchdown: {touchdown_fpm:.0f} FPM | MaxG: {max_g:.2f} | Pos: {lat:.5f},{lon:.5f}"
+                )
                 
                 flight_path_data["landings"].append({
                     "timestamp": round(time.time(), 2),
@@ -175,38 +285,48 @@ last_lat = None
 last_lon = None
 last_alt = None
 
+layout = build_layout()
+
 try:
-    print("\nTracking started. Press Ctrl+C to stop and upload flight.")
-    while True:
-        lat_data = xpc.current_dref_values.get("sim/flightmodel/position/latitude", {})
-        lon_data = xpc.current_dref_values.get("sim/flightmodel/position/longitude", {})
-        alt_data = xpc.current_dref_values.get("sim/flightmodel/position/elevation", {})
-        speed_data = xpc.current_dref_values.get("sim/flightmodel/position/groundspeed", {})
+    with Live(layout, refresh_per_second=10, screen=False):
+        layout["header"].update(tracking_banner())
 
-        lat = lat_data.get("value")
-        lon = lon_data.get("value")
-        alt = alt_data.get("value")
-        speed_ms = speed_data.get("value")
+        while True:
+            lat_data = xpc.current_dref_values.get("sim/flightmodel/position/latitude", {})
+            lon_data = xpc.current_dref_values.get("sim/flightmodel/position/longitude", {})
+            alt_data = xpc.current_dref_values.get("sim/flightmodel/position/elevation", {})
+            speed_data = xpc.current_dref_values.get("sim/flightmodel/position/groundspeed", {})
 
-        if lat is not None and lon is not None and alt is not None and speed_ms is not None:
-            lat = round(lat, 5)
-            lon = round(lon, 5)
-            alt = int(alt * 3.28084)
-            speed_kts = int(speed_ms * 1.94384)
+            lat = lat_data.get("value")
+            lon = lon_data.get("value")
+            alt = alt_data.get("value")
+            speed_ms = speed_data.get("value")
 
-            if lat != last_lat or lon != last_lon or alt != last_alt:
-                current_time = round(time.time(), 2)
-                formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                
-                print(f"[{formatted_time}] Lat: {lat}, Lon: {lon}, Alt: {alt} ft, GS: {speed_kts} kts")
-                
-                flight_path_data["path"].append([current_time, lat, lon, alt, speed_kts])
-                
-                last_lat = lat
-                last_lon = lon
-                last_alt = alt
-                
-        time.sleep(0.5)
+            if lat is not None and lon is not None and alt is not None and speed_ms is not None:
+                lat = round(lat, 5)
+                lon = round(lon, 5)
+                alt = int(alt * 3.28084)
+                speed_kts = int(speed_ms * 1.94384)
+
+                if lat != last_lat or lon != last_lon or alt != last_alt:
+                    formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                    
+                    log(
+                        f"[dim]{formatted_time}[/dim] "
+                        f"[bold cyan]LAT[/bold cyan]: {lat}  "
+                        f"[bold cyan]LON[/bold cyan]: {lon}  "
+                        f"[bold yellow]ALT[/bold yellow]: {alt} ft  "
+                        f"[bold green]GS[/bold green]: {speed_kts} kts"
+                    )
+                    
+                    flight_path_data["path"].append([round(time.time(), 2), lat, lon, alt, speed_kts])
+                    
+                    last_lat = lat
+                    last_lon = lon
+                    last_alt = alt
+
+            layout["body"].update(build_log_panel())
+            time.sleep(0.5)
 
 except KeyboardInterrupt:
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -215,24 +335,26 @@ except KeyboardInterrupt:
     with gzip.open(filename, "wt", encoding="utf-8") as outfile:
         json.dump(flight_path_data, outfile, separators=(',', ':'))
     
-    print(f"\nData saved to {filename}")
+    ok(f"Data saved to [bold]{filename}[/bold]")
 
     try:
-        print(f"Uploading {filename} to server...")
-        with open(filename, 'rb') as f:
-            files = {'flight_file': (os.path.basename(filename), f, 'application/gzip')}
-            response = requests.post(API_FLIGHTS_URL, files=files, headers=auth_headers)
+        step(f"Uploading {filename} to server...")
+
+        with console.status("[bold cyan]Uploading flight...[/bold cyan]", spinner="earth"):
+            with open(filename, 'rb') as f:
+                files = {'flight_file': (os.path.basename(filename), f, 'application/gzip')}
+                response = requests.post(API_FLIGHTS_URL, files=files, headers=auth_headers)
 
         if response.status_code == 201:
-            print("Upload successful!")
+            ok("Upload successful!")
             os.remove(filename)
-            print(f"Deleted local file: {filename}")
+            ok(f"Deleted local file: {filename}")
         elif response.status_code == 401:
-            print("Upload failed: Unauthorized. Your API key might be invalid or expired.")
-            print("Run the script with --logout to clear it and provide a new one.")
+            err("Upload failed: Unauthorized. Your API key might be invalid or expired.")
+            warn("Run the script with --logout to clear it and provide a new one.")
         else:
-            print(f"Upload failed with status code {response.status_code}.")
-            print(response.text)
+            err(f"Upload failed with status code {response.status_code}.")
+            console.print(response.text)
             
     except requests.exceptions.RequestException as e:
-        print(f"Failed to connect to the server. The file was kept locally. Error: {e}")
+        err(f"Failed to connect to the server. The file was kept locally. Error: {e}")

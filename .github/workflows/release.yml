@@ -19,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pyinstaller
+          pip install requests pyinstaller rich
 
       - name: Build EXE
         working-directory: ./XPlaneTracker
