@@ -2,12 +2,11 @@
 import { ref, onMounted } from "vue";
 import { useRoute } from "vue-router";
 import api from "../config/api";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import FlightMap from "../components/FlightMap.vue";
 
 const route = useRoute();
-const map = ref(null);
 const flightData = ref(null);
+const fullFlightData = ref(null);
 const isLoading = ref(true);
 const isError = ref(false);
 
@@ -20,93 +19,12 @@ const altitudeTiers = [
   { alt: 35000, label: "35k+", color: "#3b82f6" },
 ];
 
-const getColor = (alt) => {
-  if (alt < 1000) return "#ef4444";
-  if (alt < 5000) return "#f97316";
-  if (alt < 15000) return "#eab308";
-  if (alt < 25000) return "#22c55e";
-  if (alt < 35000) return "#06b6d4";
-  return "#3b82f6";
-};
-
-const initMap = () => {
-  map.value = L.map("map", { zoomControl: false }).setView([47.0, 19.0], 7);
-  L.control.zoom({ position: "bottomright" }).addTo(map.value);
-
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    subdomains: "abcd",
-    maxZoom: 20,
-  }).addTo(map.value);
-};
-
 const loadSharedFlight = async () => {
   try {
     const id = route.params.id;
     const response = await api.get(`/api/flights/${id}`);
-    const data = response.data;
-    flightData.value = data.metadata;
-
-    const segments = [];
-    data.path.forEach((point, i) => {
-      if (i === data.path.length - 1) return;
-      const next = data.path[i + 1];
-      const poly = L.polyline(
-        [
-          [point[1], point[2]],
-          [next[1], next[2]],
-        ],
-        {
-          color: getColor(point[3]),
-          weight: 4,
-          opacity: 0.9,
-          lineCap: "round",
-        },
-      ).addTo(map.value);
-      segments.push(poly);
-    });
-
-    data.landings.forEach((landing) => {
-      const icon = L.divIcon({
-        html: `<div class="bg-flight-accent w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-lg shadow-cyan-500/50">
-                <i class="fa-solid fa-plane-arrival text-white text-xs"></i>
-               </div>`,
-        className: "custom-div-icon",
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-      });
-
-      const marker = L.marker([landing.lat, landing.lon], { icon }).addTo(map.value);
-
-      marker.bindPopup(
-        `
-        <div class="bg-flight-sidebar text-slate-300 p-4 rounded-lg border border-flight-border min-w-[160px] shadow-xl">
-          <div class="flex items-center space-x-2 mb-3 border-b border-flight-border pb-2 pr-6">
-             <i class="fa-solid fa-location-dot text-flight-accent"></i>
-             <h3 class="font-bold text-white text-sm uppercase tracking-wider">Touchdown</h3>
-          </div>
-          <div class="space-y-2">
-            <p class="text-[11px] flex justify-between gap-6">
-              <span class="text-slate-500 font-medium">Vertical:</span> 
-              <span class="font-mono text-flight-accent font-bold">${landing.fpm} FPM</span>
-            </p>
-            <p class="text-[11px] flex justify-between gap-6">
-              <span class="text-slate-500 font-medium">G-Force:</span> 
-              <span class="font-mono text-flight-accent font-bold">${landing.g_force}G</span>
-            </p>
-          </div>
-        </div>
-      `,
-        {
-          className: "flight-popup",
-          maxWidth: 300,
-        },
-      );
-    });
-
-    if (segments.length > 0) {
-      const group = new L.featureGroup(segments);
-      map.value.fitBounds(group.getBounds(), { padding: [100, 100] });
-    }
+    fullFlightData.value = response.data;
+    flightData.value = response.data.metadata;
   } catch (error) {
     console.error(error);
     isError.value = true;
@@ -116,7 +34,6 @@ const loadSharedFlight = async () => {
 };
 
 onMounted(() => {
-  initMap();
   loadSharedFlight();
 });
 </script>
@@ -182,8 +99,6 @@ onMounted(() => {
       </div>
     </aside>
 
-    <main class="flex-grow relative">
-      <div id="map"></div>
-    </main>
+    <FlightMap :flightData="fullFlightData" />
   </div>
 </template>

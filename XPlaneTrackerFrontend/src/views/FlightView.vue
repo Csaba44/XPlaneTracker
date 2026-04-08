@@ -4,16 +4,14 @@ import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../config/api";
 import { toast } from "vue-sonner";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import FlightMap from "../components/FlightMap.vue";
 
 const router = useRouter();
 const authStore = useAuthStore();
 
 const flights = ref([]);
-const map = ref(null);
-const pathLayers = ref([]);
 const selectedFlightId = ref(null);
+const currentFlightData = ref(null);
 const generatedApiKey = ref(null);
 
 const searchQuery = ref("");
@@ -36,9 +34,7 @@ const availableAirlines = computed(() => {
 const filteredFlights = computed(() => {
   return flights.value.filter((flight) => {
     const matchesSearch = !searchQuery.value || flight.callsign.toLowerCase().includes(searchQuery.value.toLowerCase()) || flight.flight_number.toLowerCase().includes(searchQuery.value.toLowerCase()) || flight.airline.toLowerCase().includes(searchQuery.value.toLowerCase());
-
     const matchesAirline = !selectedAirline.value || flight.airline === selectedAirline.value;
-
     return matchesSearch && matchesAirline;
   });
 });
@@ -46,31 +42,6 @@ const filteredFlights = computed(() => {
 const clearFilters = () => {
   searchQuery.value = "";
   selectedAirline.value = "";
-};
-
-const getColor = (alt) => {
-  if (alt < 1000) return "#ef4444";
-  if (alt < 5000) return "#f97316";
-  if (alt < 15000) return "#eab308";
-  if (alt < 25000) return "#22c55e";
-  if (alt < 35000) return "#06b6d4";
-  return "#3b82f6";
-};
-
-const initMap = () => {
-  map.value = L.map("map", { zoomControl: false }).setView([47.0, 19.0], 7);
-  L.control.zoom({ position: "bottomright" }).addTo(map.value);
-
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    subdomains: "abcd",
-    maxZoom: 20,
-  }).addTo(map.value);
-};
-
-const clearMap = () => {
-  if (!map.value) return;
-  pathLayers.value.forEach((layer) => map.value.removeLayer(layer));
-  pathLayers.value = [];
 };
 
 const fetchFlights = async () => {
@@ -86,73 +57,7 @@ const viewFlight = async (id) => {
   selectedFlightId.value = id;
   try {
     const response = await api.get(`/api/flights/${id}`);
-    const data = response.data;
-    clearMap();
-    if (!map.value) return;
-
-    const segments = [];
-    data.path.forEach((point, i) => {
-      if (i === data.path.length - 1) return;
-      const next = data.path[i + 1];
-      const poly = L.polyline(
-        [
-          [point[1], point[2]],
-          [next[1], next[2]],
-        ],
-        {
-          color: getColor(point[3]),
-          weight: 4,
-          opacity: 0.9,
-          lineCap: "round",
-        },
-      ).addTo(map.value);
-      pathLayers.value.push(poly);
-      segments.push(poly);
-    });
-
-    data.landings.forEach((landing) => {
-      const icon = L.divIcon({
-        html: `<div class="bg-flight-accent w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-lg shadow-cyan-500/50">
-                <i class="fa-solid fa-plane-arrival text-white text-xs"></i>
-               </div>`,
-        className: "custom-div-icon",
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-      });
-
-      const marker = L.marker([landing.lat, landing.lon], { icon }).addTo(map.value);
-
-      marker.bindPopup(
-        `
-        <div class="bg-flight-sidebar text-slate-300 p-4 rounded-lg border border-flight-border min-w-[160px] shadow-xl">
-          <div class="flex items-center space-x-2 mb-3 border-b border-flight-border pb-2 pr-6">
-             <i class="fa-solid fa-location-dot text-flight-accent"></i>
-             <h3 class="font-bold text-white text-sm uppercase tracking-wider">Touchdown</h3>
-          </div>
-          <div class="space-y-2">
-            <p class="text-[11px] flex justify-between gap-6">
-              <span class="text-slate-500 font-medium">Vertical:</span> 
-              <span class="font-mono text-flight-accent font-bold">${landing.fpm} FPM</span>
-            </p>
-            <p class="text-[11px] flex justify-between gap-6">
-              <span class="text-slate-500 font-medium">G-Force:</span> 
-              <span class="font-mono text-flight-accent font-bold">${landing.g_force}G</span>
-            </p>
-          </div>
-        </div>
-      `,
-        {
-          className: "flight-popup",
-          maxWidth: 300,
-        },
-      );
-      pathLayers.value.push(marker);
-    });
-
-    if (segments.length > 0) {
-      const group = new L.featureGroup(segments);
-      map.value.fitBounds(group.getBounds(), { padding: [100, 100] });
-    }
+    currentFlightData.value = response.data;
   } catch (error) {
     console.error(error);
   }
@@ -214,7 +119,6 @@ onMounted(async () => {
     await authStore.fetchUser();
   }
   await fetchFlights();
-  initMap();
 });
 </script>
 
@@ -327,8 +231,6 @@ onMounted(async () => {
       </div>
     </aside>
 
-    <main class="flex-grow relative">
-      <div id="map"></div>
-    </main>
+    <FlightMap :flightData="currentFlightData" />
   </div>
 </template>
