@@ -60,6 +60,7 @@ const viewFlight = async (id) => {
     clearMap();
     if (!map.value) return;
 
+    // 1. Draw Flight Path
     const segments = [];
     data.path.forEach((point, i) => {
       if (i === data.path.length - 1) return;
@@ -80,28 +81,49 @@ const viewFlight = async (id) => {
       segments.push(poly);
     });
 
+    // 2. Draw Landings
     data.landings.forEach((landing) => {
-      const marker = L.circleMarker([landing.lat, landing.lon], {
-        radius: 10,
-        fillColor: "#ffffff",
-        color: "#38bdf8",
-        weight: 3,
-        fillOpacity: 1,
-      }).addTo(map.value);
+      const icon = L.divIcon({
+        html: `<div class="bg-flight-accent w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-lg shadow-cyan-500/50">
+                <i class="fa-solid fa-plane-arrival text-white text-xs"></i>
+               </div>`,
+        className: "custom-div-icon",
+        iconSize: [32, 32],
+        iconAnchor: [16, 32],
+      });
 
-      marker.bindPopup(`
-        <div class="p-1">
-          <h3 class="font-bold text-sky-400 border-b border-gray-700 mb-2">Touchdown</h3>
-          <p class="text-xs">Vertical: <span class="text-white">${landing.fpm} FPM</span></p>
-          <p class="text-xs">Force: <span class="text-white">${landing.g_force}G</span></p>
+      const marker = L.marker([landing.lat, landing.lon], { icon }).addTo(map.value);
+
+      marker.bindPopup(
+        `
+        <div class="bg-flight-sidebar text-slate-300 p-4 rounded-lg border border-flight-border min-w-[160px] shadow-xl">
+          <div class="flex items-center space-x-2 mb-3 border-b border-flight-border pb-2 pr-6">
+             <i class="fa-solid fa-location-dot text-flight-accent"></i>
+             <h3 class="font-bold text-white text-sm uppercase tracking-wider">Touchdown</h3>
+          </div>
+          <div class="space-y-2">
+            <p class="text-[11px] flex justify-between gap-6">
+              <span class="text-slate-500 font-medium">Vertical:</span> 
+              <span class="font-mono text-flight-accent font-bold">${landing.fpm} FPM</span>
+            </p>
+            <p class="text-[11px] flex justify-between gap-6">
+              <span class="text-slate-500 font-medium">G-Force:</span> 
+              <span class="font-mono text-flight-accent font-bold">${landing.g_force}G</span>
+            </p>
+          </div>
         </div>
-      `);
+      `,
+        {
+          className: "flight-popup",
+          maxWidth: 300,
+        },
+      );
       pathLayers.value.push(marker);
     });
 
     if (segments.length > 0) {
       const group = new L.featureGroup(segments);
-      map.value.fitBounds(group.getBounds(), { padding: [50, 50] });
+      map.value.fitBounds(group.getBounds(), { padding: [100, 100] });
     }
   } catch (error) {
     console.error(error);
@@ -119,22 +141,24 @@ onMounted(async () => {
     <aside class="w-85 flex flex-col bg-flight-sidebar border-r border-flight-border z-[1000] shadow-2xl">
       <div class="p-8">
         <div class="flex items-center space-x-3">
-          <div class="w-2 h-8 bg-flight-accent rounded-full"></div>
+          <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
             <h1 class="text-2xl font-black text-white tracking-tighter italic">X-TRACKER</h1>
-            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest">Live Telemetry Analysis</p>
+            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest">Flight Intelligence</p>
           </div>
         </div>
       </div>
 
       <div class="flex-grow overflow-y-auto px-4 pb-4 space-y-3">
-        <div v-if="flights.length === 0" class="text-center py-20 text-slate-600">
-          <p class="text-sm">Waiting for flight data...</p>
+        <div v-if="flights.length === 0" class="text-center py-20 text-slate-600 italic">
+          <p class="text-sm">Searching for flight logs...</p>
         </div>
 
-        <div v-for="flight in flights" :key="flight.id" @click="viewFlight(flight.id)" :class="['p-5 rounded-xl cursor-pointer transition-all duration-300 border', selectedFlightId === flight.id ? 'bg-flight-card border-flight-accent shadow-[0_0_15px_rgba(56,189,248,0.2)]' : 'bg-transparent border-transparent hover:bg-flight-card-hover hover:border-flight-border']">
+        <div v-for="flight in flights" :key="flight.id" @click="viewFlight(flight.id)" :class="['p-5 rounded-xl cursor-pointer transition-all duration-300 border group', selectedFlightId === flight.id ? 'bg-flight-card border-flight-accent shadow-[0_0_20px_rgba(56,189,248,0.1)]' : 'bg-transparent border-transparent hover:bg-flight-card-hover']">
           <div class="flex justify-between items-center mb-3">
-            <span class="text-xl font-bold text-white group-hover:text-flight-accent">{{ flight.callsign }}</span>
+            <span :class="['text-xl font-bold transition-colors', selectedFlightId === flight.id ? 'text-flight-accent' : 'text-white group-hover:text-flight-accent']">
+              {{ flight.callsign }}
+            </span>
             <span class="text-[10px] bg-flight-bg text-flight-accent border border-flight-accent/30 px-2 py-1 rounded font-mono">
               {{ flight.flight_number }}
             </span>
@@ -142,18 +166,18 @@ onMounted(async () => {
           <div class="flex justify-between items-end text-xs text-slate-500">
             <div class="flex flex-col">
               <span class="text-slate-400 font-medium">{{ flight.airline }}</span>
-              <span>{{ new Date(flight.start_time).toLocaleDateString() }}</span>
+              <span class="text-[10px]">{{ new Date(flight.start_time).toLocaleDateString() }}</span>
             </div>
-            <i class="fas fa-chevron-right text-flight-border"></i>
+            <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors"></i>
           </div>
         </div>
       </div>
 
       <div class="p-6 bg-black/40 border-t border-flight-border">
-        <h4 class="text-[10px] font-bold text-slate-500 mb-4 uppercase tracking-widest">Altitude Legend (MSL)</h4>
+        <h4 class="text-[10px] font-bold text-slate-500 mb-4 uppercase tracking-widest flex items-center"><i class="fa-solid fa-layer-group mr-2 text-flight-accent"></i> Altitude MSL (FT)</h4>
         <div class="grid grid-cols-2 gap-x-4 gap-y-2">
           <div v-for="tier in altitudeTiers" :key="tier.alt" class="flex items-center space-x-3">
-            <div class="w-2.5 h-2.5 rounded-sm shadow-sm" :style="{ backgroundColor: tier.color }"></div>
+            <div class="w-2.5 h-2.5 rounded-sm" :style="{ backgroundColor: tier.color }"></div>
             <span class="text-[11px] text-slate-400 font-medium">{{ tier.label }}</span>
           </div>
         </div>

@@ -1,7 +1,5 @@
 @import "tailwindcss";
 
-@import "tailwindcss";
-
 @theme {
   /* Dark Backgrounds */
   --color-flight-bg: #0b0e14;
@@ -9,7 +7,7 @@
   --color-flight-card: #1c222d;
   --color-flight-card-hover: #252d3a;
 
-  /* Primary Accents (Light Blue / Aero) */
+  /* Primary Accents */
   --color-flight-accent: #38bdf8;
   --color-flight-accent-glow: rgba(56, 189, 248, 0.15);
 
@@ -18,7 +16,7 @@
   --color-flight-muted: #94a3b8;
 }
 
-/* Base Styles */
+/* Base Layout Fixes */
 #map {
   height: 100%;
   width: 100%;
@@ -28,7 +26,42 @@
   background: #0b0e14 !important;
 }
 
-/* Customizing Scrollbar for the Sidebar */
+/* Custom Leaflet Popup Overrides */
+.flight-popup .leaflet-popup-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.flight-popup .leaflet-popup-tip {
+  background: #151921 !important; /* Matches flight-sidebar */
+  border: 1px solid #2d3544;
+}
+
+.flight-popup .leaflet-popup-close-button {
+  top: 12px !important;
+  right: 12px !important;
+  color: #94a3b8 !important;
+  font-size: 16px !important;
+  padding: 4px !important;
+  z-index: 10;
+}
+
+.flight-popup .leaflet-popup-close-button:hover {
+  color: #ffffff !important;
+  background: transparent !important;
+}
+
+.flight-popup .leaflet-popup-content {
+  margin: 0 !important;
+}
+
+.custom-div-icon {
+  background: none !important;
+  border: none !important;
+}
+
+/* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 6px;
 }
