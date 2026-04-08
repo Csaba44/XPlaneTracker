@@ -22,6 +22,7 @@ jobs:
           pip install requests pyinstaller
 
       - name: Build EXE
+        working-directory: ./XPlaneTracker
         run: |
           pyinstaller --onefile --name "CSABOLANTA" main.py
 
@@ -29,6 +30,6 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/CSABOLANTA.exe
+          files: XPlaneTracker/dist/CSABOLANTA.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
