@@ -1,8 +1,13 @@
 <script setup>
 import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { useAuthStore } from "../stores/auth";
 import api from "../config/api";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+
+const router = useRouter();
+const authStore = useAuthStore();
 
 const flights = ref([]);
 const map = ref(null);
@@ -128,7 +133,19 @@ const viewFlight = async (id) => {
   }
 };
 
+const handleLogout = async () => {
+  try {
+    await authStore.logout();
+    router.push("/login");
+  } catch (error) {
+    console.error(error);
+  }
+};
+
 onMounted(async () => {
+  if (!authStore.user) {
+    await authStore.fetchUser();
+  }
   await fetchFlights();
   initMap();
 });
@@ -137,13 +154,25 @@ onMounted(async () => {
 <template>
   <div class="flex h-screen w-screen bg-flight-bg text-slate-300 overflow-hidden font-sans">
     <aside class="w-85 flex flex-col bg-flight-sidebar border-r border-flight-border z-[1000] shadow-2xl">
-      <div class="p-8">
-        <div class="flex items-center space-x-3">
+      <div class="p-8 pb-6">
+        <div class="flex items-center space-x-3 mb-6">
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
             <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">X-TRACKER</h1>
             <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">Muro phralenge 🍀</p>
           </div>
+        </div>
+
+        <div class="flex items-center justify-between bg-flight-card border border-flight-border p-3 rounded-lg">
+          <div class="flex flex-col">
+            <span class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Szia testvér!</span>
+            <span class="text-xs text-white font-bold truncate max-w-[120px]">
+              {{ authStore.user?.email || "Pilot" }}
+            </span>
+          </div>
+          <button @click="handleLogout" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Logout">
+            <i class="fa-solid fa-right-from-bracket text-xs"></i>
+          </button>
         </div>
       </div>
 
