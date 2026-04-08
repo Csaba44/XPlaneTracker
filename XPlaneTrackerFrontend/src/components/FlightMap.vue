@@ -14,15 +14,9 @@ const mapContainer = ref(null);
 let map = null;
 let pathLayers = [];
 
-// Cache so the same airport isn't fetched twice (keyed by rounded lat/lon)
 const runwayCache = new Map();
 
-// Overpass mirror list — tried in order, first success wins
-const OVERPASS_MIRRORS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
-
-// ---------------------------------------------------------------------------
-// Colour helper
-// ---------------------------------------------------------------------------
+const OVERPASS_MIRRORS = ["https://overpass.kumi.systems/api/interpreter", "https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
 
 const getColor = (alt) => {
   if (alt < 1000) return "#ef4444";
@@ -33,13 +27,6 @@ const getColor = (alt) => {
   return "#3b82f6";
 };
 
-// ---------------------------------------------------------------------------
-// Spherical geometry helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Bearing (degrees, 0=N clockwise) from A → B.
- */
 const bearing = (lat1, lon1, lat2, lon2) => {
   const toRad = (d) => (d * Math.PI) / 180;
   const φ1 = toRad(lat1),
@@ -50,9 +37,6 @@ const bearing = (lat1, lon1, lat2, lon2) => {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 };
 
-/**
- * Point that is `distM` metres from [lat,lon] on bearing `brg`.
- */
 const destination = (lat, lon, brg, distM) => {
   const R = 6378137;
   const δ = distM / R;
@@ -64,9 +48,6 @@ const destination = (lat, lon, brg, distM) => {
   return [(φ2 * 180) / Math.PI, (((λ2 * 180) / Math.PI + 540) % 360) - 180];
 };
 
-/**
- * Haversine distance in metres between two points.
- */
 const distanceM = (lat1, lon1, lat2, lon2) => {
   const R = 6378137;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -75,10 +56,6 @@ const distanceM = (lat1, lon1, lat2, lon2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-/**
- * Shift every point in a [lat,lon][] array by `offsetM` metres perpendicular
- * to the local track direction. Positive = right, negative = left.
- */
 const offsetPolyline = (points, offsetM) => {
   return points.map((pt, i) => {
     const prev = points[Math.max(0, i - 1)];
@@ -88,15 +65,6 @@ const offsetPolyline = (points, offsetM) => {
   });
 };
 
-// ---------------------------------------------------------------------------
-// Runway drawing
-// ---------------------------------------------------------------------------
-
-/**
- * Convert a runway designator like "31L", "04R", "09" to its magnetic
- * heading in degrees (the direction the aircraft faces when landing on it).
- * Designator number × 10 gives the heading; we ignore L/R/C for this.
- */
 const designatorToHeading = (des) => {
   if (!des) return null;
   const num = parseInt(des.replace(/[^0-9]/g, ""), 10);
@@ -104,9 +72,6 @@ const designatorToHeading = (des) => {
   return (num * 10) % 360;
 };
 
-/**
- * Angular difference between two bearings (0–180).
- */
 const angleDiff = (a, b) => {
   const d = Math.abs((a - b + 360) % 360);
   return d > 180 ? 360 - d : d;
@@ -115,50 +80,49 @@ const angleDiff = (a, b) => {
 const drawRunway = (el) => {
   if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
 
-  // cl[0] may be either threshold — we'll sort it out below
   let cl = el.geometry.map((g) => [g.lat, g.lon]);
   const widthM = el.tags?.width ? parseFloat(el.tags.width) : 45;
   const half = widthM / 2;
 
-  // --- Determine correct geometry direction from designator numbers ---
-  // OSM ref = "leDesignator/heDesignator", e.g. "04R/22L"
-  // leDesignator is the LOW-end (smaller number, e.g. 04).
-  // We want cl[0] to be the low-end threshold.
-  // Strategy: the bearing FROM cl[0] TO cl[1] should be close to leDesignator × 10.
   if (el.tags?.ref) {
     const [leRef] = el.tags.ref.split("/");
     const leHeading = designatorToHeading(leRef);
     if (leHeading !== null) {
       const actualBearing = bearing(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
-      // If the geometry runs the wrong way, reverse it
       if (angleDiff(actualBearing, leHeading) > 90) {
         cl = [...cl].reverse();
       }
     }
   }
 
-  // Now cl[0] = low-end threshold (leRef side), cl[last] = high-end (heRef side)
   const leInward = bearing(cl[0][0], cl[0][1], cl[1][0], cl[1][1]);
   const heInward = bearing(cl[cl.length - 1][0], cl[cl.length - 1][1], cl[cl.length - 2][0], cl[cl.length - 2][1]);
 
-  // ── 1. Asphalt base ──────────────────────────────────────────────────────
   const right = offsetPolyline(cl, half);
   const left = offsetPolyline(cl, -half);
+
   pathLayers.push(
     L.polygon([...right, ...[...left].reverse()], {
       color: "transparent",
       fillColor: "#111111",
       fillOpacity: 1,
       interactive: false,
+      pane: "runwaysPane", // Placed in custom runway pane
     }).addTo(map),
   );
 
-  // ── 2. Solid white edge lines ────────────────────────────────────────────
   [right, left].forEach((edge) => {
-    pathLayers.push(L.polyline(edge, { color: "#ffffff", weight: 2, opacity: 0.9, interactive: false }).addTo(map));
+    pathLayers.push(
+      L.polyline(edge, {
+        color: "#ffffff",
+        weight: 2,
+        opacity: 0.9,
+        interactive: false,
+        pane: "runwaysPane",
+      }).addTo(map),
+    );
   });
 
-  // ── 3. Dashed white centreline ───────────────────────────────────────────
   pathLayers.push(
     L.polyline(cl, {
       color: "#ffffff",
@@ -166,10 +130,10 @@ const drawRunway = (el) => {
       opacity: 0.65,
       dashArray: "20 15",
       interactive: false,
+      pane: "runwaysPane",
     }).addTo(map),
   );
 
-  // ── 4. Threshold piano keys ───────────────────────────────────────────────
   const drawPianoKeys = (thresholdPt, inwardBrg) => {
     const perpBrg = (inwardBrg + 90) % 360;
     const numStripes = 8;
@@ -196,6 +160,7 @@ const drawRunway = (el) => {
           fillColor: "#ffffff",
           fillOpacity: 0.85,
           interactive: false,
+          pane: "runwaysPane",
         }).addTo(map),
       );
     }
@@ -204,17 +169,11 @@ const drawRunway = (el) => {
   drawPianoKeys(cl[0], leInward);
   drawPianoKeys(cl[cl.length - 1], heInward);
 
-  // ── 5. Touchdown zone bars ────────────────────────────────────────────────
-  // ICAO standard: twin rectangular bars parallel to the centreline,
-  // offset left and right. Starting 150 m from threshold, every 150 m, up to 900 m.
   const runwayLen = distanceM(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
   const tzDistances = [150, 300, 450, 600, 750, 900].filter((d) => d < runwayLen - 150);
-
-  // Bar dimensions (ICAO Annex 14):
-  // 22.5 m long (along runway), 3 m wide, centred ~8 m either side of CL
   const barLenM = 22.5;
   const barWidthM = 3;
-  const barLateralM = widthM * 0.2; // lateral centre offset from CL
+  const barLateralM = widthM * 0.2;
 
   const drawTDZBars = (thresholdPt, inwardBrg) => {
     const perpBrg = (inwardBrg + 90) % 360;
@@ -223,10 +182,7 @@ const drawRunway = (el) => {
       const along = destination(thresholdPt[0], thresholdPt[1], inwardBrg, dist);
 
       [-barLateralM, barLateralM].forEach((latOff) => {
-        // Centre of this individual bar
         const bc = destination(along[0], along[1], perpBrg, latOff);
-
-        // Corners: half-length along inwardBrg, half-width along perpBrg
         const fwd = destination(bc[0], bc[1], inwardBrg, barLenM / 2);
         const aft = destination(bc[0], bc[1], (inwardBrg + 180) % 360, barLenM / 2);
 
@@ -241,6 +197,7 @@ const drawRunway = (el) => {
             fillColor: "#ffffff",
             fillOpacity: 0.75,
             interactive: false,
+            pane: "runwaysPane",
           }).addTo(map),
         );
       });
@@ -250,12 +207,22 @@ const drawRunway = (el) => {
   drawTDZBars(cl[0], leInward);
   drawTDZBars(cl[cl.length - 1], heInward);
 
-  // ── 6. Designator labels ─────────────────────────────────────────────────
-  // OSM ref = "leDesignator/heDesignator" e.g. "04R/22L"
-  // leRef → placed at cl[0]        facing leInward
-  // heRef → placed at cl[last]     facing heInward
   if (el.tags?.ref) {
-    const [leRef, heRef] = el.tags.ref.split("/");
+    let parts = el.tags.ref.split("/");
+    let leRef = parts[0];
+    let heRef = parts[1];
+
+    if (leRef && heRef) {
+      const hdg1 = parseInt(leRef, 10) * 10;
+      const getAngleDiff = (a, b) => {
+        const d = Math.abs((a - b) % 360);
+        return d > 180 ? 360 - d : d;
+      };
+
+      if (getAngleDiff(hdg1, leInward) > getAngleDiff(hdg1, heInward)) {
+        [leRef, heRef] = [heRef, leRef];
+      }
+    }
 
     const addLabel = (thresholdPt, inwardBrg, label) => {
       if (!label) return;
@@ -266,6 +233,7 @@ const drawRunway = (el) => {
         iconSize: [40, 20],
         iconAnchor: [20, 10],
       });
+      // Labels stay in the default marker pane so they are above the runway
       pathLayers.push(L.marker(pos, { icon, interactive: false }).addTo(map));
     };
 
@@ -273,10 +241,6 @@ const drawRunway = (el) => {
     addLabel(cl[cl.length - 1], heInward, heRef);
   }
 };
-
-// ---------------------------------------------------------------------------
-// Overpass fetch with mirror fallback + caching
-// ---------------------------------------------------------------------------
 
 const cacheKey = (lat, lon) => `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
 
@@ -303,7 +267,14 @@ const fetchAndDrawRunways = async (lat, lon) => {
     return;
   }
 
-  const query = `[out:json];way["aeroway"="runway"](around:4000,${lat},${lon});out geom tags;`;
+  const offsetLat = 0.025;
+  const offsetLon = 0.035;
+  const s = lat - offsetLat;
+  const n = lat + offsetLat;
+  const w = lon - offsetLon;
+  const e = lon + offsetLon;
+
+  const query = `[out:json][timeout:10];way["aeroway"="runway"](${s},${w},${n},${e});out geom tags;`;
 
   try {
     const data = await fetchOverpass(query);
@@ -315,22 +286,23 @@ const fetchAndDrawRunways = async (lat, lon) => {
   }
 };
 
-// ---------------------------------------------------------------------------
-// Map init
-// ---------------------------------------------------------------------------
-
 const initMap = () => {
   map = L.map(mapContainer.value, { zoomControl: false }).setView([47.0, 19.0], 7);
   L.control.zoom({ position: "bottomright" }).addTo(map);
+
+  // --- NEW: Custom Panes to control rendering order (Z-Index) ---
+  // Default overlayPane is 400. We put runways below it, and flight path above it.
+  map.createPane("runwaysPane");
+  map.getPane("runwaysPane").style.zIndex = 390;
+
+  map.createPane("flightPathPane");
+  map.getPane("flightPathPane").style.zIndex = 410;
+
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     subdomains: "abcd",
     maxZoom: 20,
   }).addTo(map);
 };
-
-// ---------------------------------------------------------------------------
-// Flight path + landings
-// ---------------------------------------------------------------------------
 
 const clearMap = () => {
   if (!map) return;
@@ -352,7 +324,13 @@ const drawFlight = (data) => {
         [point[1], point[2]],
         [next[1], next[2]],
       ],
-      { color: getColor(point[3]), weight: 4, opacity: 0.9, lineCap: "round" },
+      {
+        color: getColor(point[3]),
+        weight: 4,
+        opacity: 0.9,
+        lineCap: "round",
+        pane: "flightPathPane", // Placed in custom flight path pane
+      },
     ).addTo(map);
     pathLayers.push(poly);
     segments.push(poly);
