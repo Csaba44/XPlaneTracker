@@ -5,6 +5,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FlightController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ProfileController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -26,4 +27,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/admin/users', [AdminUserController::class, 'store']);
     Route::put('/admin/users/{user}', [AdminUserController::class, 'update']);
     Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy']);
+
+    Route::put('/user/profile', [ProfileController::class, 'update']);
 });

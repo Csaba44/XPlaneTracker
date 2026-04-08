@@ -17,6 +17,13 @@ const generatedApiKey = ref(null);
 const searchQuery = ref("");
 const selectedAirline = ref("");
 
+const isProfileModalOpen = ref(false);
+const profileForm = ref({
+  name: "",
+  email: "",
+  password: "",
+});
+
 const altitudeTiers = [
   { alt: 0, label: "0 - 1k", color: "#ef4444" },
   { alt: 1000, label: "1k - 5k", color: "#f97316" },
@@ -114,6 +121,31 @@ const shareFlight = async (id) => {
   }
 };
 
+const openProfileModal = () => {
+  profileForm.value = {
+    name: authStore.user?.name || "",
+    email: authStore.user?.email || "",
+    password: "",
+  };
+  isProfileModalOpen.value = true;
+};
+
+const closeProfileModal = () => {
+  isProfileModalOpen.value = false;
+};
+
+const saveProfile = async () => {
+  try {
+    const response = await api.put("/api/user/profile", profileForm.value);
+    authStore.user = response.data;
+    toast.success("Profile updated successfully");
+    closeProfileModal();
+  } catch (error) {
+    console.error(error);
+    toast.error(error.response?.data?.message || "Failed to update profile");
+  }
+};
+
 onMounted(async () => {
   if (!authStore.user) {
     await authStore.fetchUser();
@@ -139,13 +171,20 @@ onMounted(async () => {
             <div class="flex flex-col">
               <span class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Szia testvér!</span>
               <span class="text-xs text-white font-bold truncate max-w-[120px]">
-                {{ authStore.user?.name || "Ismeretlen testvér" }}
+                {{ authStore.user?.name || authStore.user?.email || "Pilot" }}
               </span>
             </div>
-            <button @click="handleLogout" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Logout">
-              <i class="fa-solid fa-right-from-bracket text-xs"></i>
-            </button>
+            <div class="flex space-x-1">
+              <button @click="openProfileModal" class="bg-flight-bg hover:bg-flight-accent/20 text-slate-400 hover:text-flight-accent transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Edit Profile">
+                <i class="fa-solid fa-gear text-xs"></i>
+              </button>
+              <button @click="handleLogout" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Logout">
+                <i class="fa-solid fa-right-from-bracket text-xs"></i>
+              </button>
+            </div>
           </div>
+
+          <router-link v-if="authStore.user?.is_admin === 1" to="/admin" class="w-full text-center bg-purple-500/10 hover:bg-purple-500 text-purple-500 hover:text-white border border-purple-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider block"> Admin Panel </router-link>
 
           <button @click="generateApiKey" class="w-full bg-flight-accent/10 hover:bg-flight-accent text-flight-accent hover:text-white border border-flight-accent transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">Generate API Key</button>
 
@@ -154,7 +193,6 @@ onMounted(async () => {
             <code class="text-[10px] text-flight-accent break-all select-all">{{ generatedApiKey }}</code>
           </div>
         </div>
-        <router-link v-if="authStore.user?.is_admin === 1" to="/admin" class="w-full text-center bg-purple-500/10 hover:bg-purple-500 text-purple-500 hover:text-white border border-purple-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider block mt-2"> Admin </router-link>
       </div>
 
       <div class="px-4 pb-4">
@@ -233,5 +271,33 @@ onMounted(async () => {
     </aside>
 
     <FlightMap :flightData="currentFlightData" />
+
+    <div v-if="isProfileModalOpen" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[5000] p-4 backdrop-blur-sm">
+      <div class="bg-flight-sidebar border border-flight-border p-8 rounded-2xl shadow-2xl w-full max-w-md">
+        <h2 class="text-2xl font-black text-white italic mb-6 uppercase tracking-tighter">Profil</h2>
+
+        <form @submit.prevent="saveProfile" class="space-y-4">
+          <div>
+            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Username</label>
+            <input v-model="profileForm.name" type="text" required class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+          </div>
+
+          <div>
+            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Email</label>
+            <input v-model="profileForm.email" type="email" required class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+          </div>
+
+          <div>
+            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1"> Új jelszó <span class="text-slate-600 lowercase normal-case">(hagyd üresen a régihez)</span> </label>
+            <input v-model="profileForm.password" type="password" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+          </div>
+
+          <div class="flex space-x-3 pt-6">
+            <button type="button" @click="closeProfileModal" class="flex-1 bg-flight-card hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition-colors uppercase tracking-widest text-xs border border-flight-border cursor-pointer">Mégse</button>
+            <button type="submit" class="flex-1 bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-3 rounded-lg transition-colors shadow-lg uppercase tracking-widest text-xs cursor-pointer">Mentés</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
