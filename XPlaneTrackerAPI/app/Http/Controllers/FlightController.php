@@ -24,7 +24,7 @@ class FlightController extends Controller
         $content = gzdecode(file_get_contents($file->getRealPath()));
         $data = json_decode($content, true);
 
-        $path = $file->store('flights');
+        $path = $file->store('flights', 'public');
 
         $flight = Flight::create([
             'callsign' => $data['metadata']['callsign'] ?? 'unknown',
@@ -39,17 +39,15 @@ class FlightController extends Controller
 
     public function show(Flight $flight)
     {
-        $path = storage_path('app/private/' . $flight->file_path);
+        $disk = Storage::disk('public');
 
-        if (!file_exists($path)) {
-            $path = storage_path('app/' . $flight->file_path);
-        }
-
-        if (!file_exists($path)) {
+        if (!$disk->exists($flight->file_path)) {
             return response()->json(['error' => 'File not found'], 404);
         }
 
-        return response()->file($path, [
+        $absolutePath = $disk->path($flight->file_path);
+
+        return response()->file($absolutePath, [
             'Content-Type' => 'application/json',
             'Content-Encoding' => 'gzip',
         ]);
@@ -69,7 +67,7 @@ class FlightController extends Controller
 
     public function destroy(Flight $flight)
     {
-        Storage::delete($flight->file_path);
+        Storage::disk('public')->delete($flight->file_path);
         $flight->delete();
 
         return response()->json(null, 204);

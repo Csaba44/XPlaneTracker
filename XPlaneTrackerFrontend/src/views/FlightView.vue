@@ -45,7 +45,7 @@ const clearMap = () => {
 
 const fetchFlights = async () => {
   try {
-    const response = await api.get("/flights");
+    const response = await api.get("/api/flights");
     flights.value = response.data;
   } catch (error) {
     console.error(error);
@@ -55,7 +55,7 @@ const fetchFlights = async () => {
 const viewFlight = async (id) => {
   selectedFlightId.value = id;
   try {
-    const response = await api.get(`/flights/${id}`);
+    const response = await api.get(`/api/flights/${id}`);
     const data = response.data;
     clearMap();
     if (!map.value) return;

@@ -1,0 +1,79 @@
+services:
+  mysql:
+    container_name: xtracker_mysql
+    image: mysql:8.0.36
+    env_file:
+      - .env.dev
+    ports:
+      - 3306:3306
+    volumes:
+      - mysql_data_xtracker:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", 'mysqladmin ping -h localhost -uroot -p"$MYSQL_ROOT_PASSWORD" || exit 1']
+      interval: 10s
+      timeout: 2s
+      retries: 5
+      start_period: 30s
+  backend:
+    user: "${UID}:${GID}"
+    container_name: xtracker_backend
+    build:
+      context: ./XPlaneTrackerAPI
+      target: dev
+    entrypoint: ["/bin/sh", "/docker/entrypoint.sh"]
+    command: php-fpm
+    volumes:
+      - ./XPlaneTrackerAPI:/var/www
+      - ./XPlaneTrackerAPI/docker/dev/entrypoint.sh:/docker/entrypoint.sh
+    env_file:
+      - .env.dev
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      mysql:
+        condition: service_healthy
+  artisan:
+    user: "${UID}:${GID}"
+    container_name: xtracker_artisan
+    build: ./XPlaneTrackerAPI
+    entrypoint: ["php", "/var/www/artisan"]
+    volumes:
+      - ./XPlaneTrackerAPI:/var/www
+    env_file:
+      - .env.dev
+    depends_on:
+      mysql:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  nginx:
+    container_name: xtracker_nginx
+    image: nginx:1.25-alpine
+    ports:
+      - 8080:80
+    volumes:
+      - ./XPlaneTrackerAPI:/var/www
+      - ./docker/dev/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      backend:
+        condition: service_healthy
+  frontend:
+    container_name: xtracker_frontend
+    build:
+      context: ./XPlaneTrackerFrontend
+      target: dev
+    env_file:
+      - .env.dev
+    ports:
+      - 5173:5173
+    volumes:
+      - ./XPlaneTrackerFrontend:/app
+      - /app/node_modules
+
+volumes:
+  mysql_data_xtracker:

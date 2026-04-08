@@ -4,10 +4,20 @@ import os
 import gzip
 import threading
 import requests
+import argparse
 from datetime import datetime
 from XPlaneConnectX import XPlaneConnectX
 
-API_URL = "http://127.0.0.1:8000/api/flights"
+parser = argparse.ArgumentParser()
+parser.add_argument("--host", type=str, default="127.0.0.1")
+args = parser.parse_args()
+
+HOST_IP = args.host
+API_URL = f"http://xtracker.local:5173/api/flights"
+
+print(f"--- X-TRACKER ---")
+print(f"XPlane IP: {HOST_IP}")
+print(f"API: {API_URL}")
 
 callsign = input("Enter callsign (optional): ").strip() or "unknown"
 flight_number = input("Enter flight number (optional): ").strip() or "unknown"
@@ -15,7 +25,7 @@ airline = input("Enter airline (optional): ").strip() or "unknown"
 
 os.makedirs("flights", exist_ok=True)
 
-xpc = XPlaneConnectX()
+xpc = XPlaneConnectX(ip=HOST_IP)
 
 drefs_to_subscribe = [
     ("sim/flightmodel/position/latitude", 50),
@@ -74,8 +84,10 @@ def landing_monitor():
                         max_g = current_g
                     time.sleep(0.02)
                 
-                lat = xpc.current_dref_values["sim/flightmodel/position/latitude"].get("value")
-                lon = xpc.current_dref_values["sim/flightmodel/position/longitude"].get("value")
+                lat_dref = xpc.current_dref_values.get("sim/flightmodel/position/latitude", {})
+                lon_dref = xpc.current_dref_values.get("sim/flightmodel/position/longitude", {})
+                lat = lat_dref.get("value", 0)
+                lon = lon_dref.get("value", 0)
                 
                 print(f"\n---> LANDING RECORDED: {touchdown_fpm:.0f} FPM, {max_g:.2f} G <---")
                 
@@ -100,9 +112,9 @@ last_alt = None
 
 try:
     while True:
-        lat_data = xpc.current_dref_values["sim/flightmodel/position/latitude"]
-        lon_data = xpc.current_dref_values["sim/flightmodel/position/longitude"]
-        alt_data = xpc.current_dref_values["sim/flightmodel/position/elevation"]
+        lat_data = xpc.current_dref_values.get("sim/flightmodel/position/latitude", {})
+        lon_data = xpc.current_dref_values.get("sim/flightmodel/position/longitude", {})
+        alt_data = xpc.current_dref_values.get("sim/flightmodel/position/elevation", {})
 
         lat = lat_data.get("value")
         lon = lon_data.get("value")

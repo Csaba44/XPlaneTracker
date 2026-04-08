@@ -1,0 +1,24 @@
+-- database
+CREATE DATABASE IF NOT EXISTS xtracker
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+-- user
+CREATE USER IF NOT EXISTS 'appuser'@'%' IDENTIFIED BY 'USER_PASSWORD';
+
+-- privileges
+GRANT
+  SELECT,
+  INSERT,
+  UPDATE,
+  DELETE,
+  CREATE,
+  ALTER,
+  DROP,
+  INDEX,
+  REFERENCES,
+  CREATE TEMPORARY TABLES,
+  LOCK TABLES
+ON xtracker.* TO 'appuser'@'%';
+
+FLUSH PRIVILEGES;
