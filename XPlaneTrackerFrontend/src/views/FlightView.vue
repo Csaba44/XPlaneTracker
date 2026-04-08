@@ -34,15 +34,6 @@ const editFlightForm = ref({
   arr_icao: "",
 });
 
-const altitudeTiers = [
-  { alt: 0, label: "0 - 1k", color: "#ef4444" },
-  { alt: 1000, label: "1k - 5k", color: "#f97316" },
-  { alt: 5000, label: "5k - 15k", color: "#eab308" },
-  { alt: 15000, label: "15k - 25k", color: "#22c55e" },
-  { alt: 25000, label: "25k - 35k", color: "#06b6d4" },
-  { alt: 35000, label: "35k+", color: "#3b82f6" },
-];
-
 const availableAirlines = computed(() => {
   const airlines = flights.value.map((f) => f.airline).filter(Boolean);
   return [...new Set(airlines)].sort();
@@ -333,16 +324,6 @@ onMounted(async () => {
 
               <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors ml-1"></i>
             </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="p-6 bg-black/40 border-t border-flight-border">
-        <h4 class="text-[10px] font-bold text-slate-500 mb-4 uppercase tracking-widest flex items-center"><i class="fa-solid fa-layer-group mr-2 text-flight-accent"></i> Altitude MSL (FT)</h4>
-        <div class="grid grid-cols-2 gap-x-4 gap-y-2">
-          <div v-for="tier in altitudeTiers" :key="tier.alt" class="flex items-center space-x-3">
-            <div class="w-2.5 h-2.5 rounded-sm" :style="{ backgroundColor: tier.color }"></div>
-            <span class="text-[11px] text-slate-400 font-medium">{{ tier.label }}</span>
           </div>
         </div>
       </div>
