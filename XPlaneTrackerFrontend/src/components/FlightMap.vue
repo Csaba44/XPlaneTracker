@@ -92,14 +92,52 @@ const offsetPolyline = (points, offsetM) => {
 // Runway drawing
 // ---------------------------------------------------------------------------
 
+/**
+ * Convert a runway designator like "31L", "04R", "09" to its magnetic
+ * heading in degrees (the direction the aircraft faces when landing on it).
+ * Designator number × 10 gives the heading; we ignore L/R/C for this.
+ */
+const designatorToHeading = (des) => {
+  if (!des) return null;
+  const num = parseInt(des.replace(/[^0-9]/g, ""), 10);
+  if (isNaN(num)) return null;
+  return (num * 10) % 360;
+};
+
+/**
+ * Angular difference between two bearings (0–180).
+ */
+const angleDiff = (a, b) => {
+  const d = Math.abs((a - b + 360) % 360);
+  return d > 180 ? 360 - d : d;
+};
+
 const drawRunway = (el) => {
   if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
 
-  const cl = el.geometry.map((g) => [g.lat, g.lon]);
+  // cl[0] may be either threshold — we'll sort it out below
+  let cl = el.geometry.map((g) => [g.lat, g.lon]);
   const widthM = el.tags?.width ? parseFloat(el.tags.width) : 45;
   const half = widthM / 2;
 
-  // Bearings facing *inward* from each threshold
+  // --- Determine correct geometry direction from designator numbers ---
+  // OSM ref = "leDesignator/heDesignator", e.g. "04R/22L"
+  // leDesignator is the LOW-end (smaller number, e.g. 04).
+  // We want cl[0] to be the low-end threshold.
+  // Strategy: the bearing FROM cl[0] TO cl[1] should be close to leDesignator × 10.
+  if (el.tags?.ref) {
+    const [leRef] = el.tags.ref.split("/");
+    const leHeading = designatorToHeading(leRef);
+    if (leHeading !== null) {
+      const actualBearing = bearing(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
+      // If the geometry runs the wrong way, reverse it
+      if (angleDiff(actualBearing, leHeading) > 90) {
+        cl = [...cl].reverse();
+      }
+    }
+  }
+
+  // Now cl[0] = low-end threshold (leRef side), cl[last] = high-end (heRef side)
   const leInward = bearing(cl[0][0], cl[0][1], cl[1][0], cl[1][1]);
   const heInward = bearing(cl[cl.length - 1][0], cl[cl.length - 1][1], cl[cl.length - 2][0], cl[cl.length - 2][1]);
 
