@@ -144,7 +144,7 @@ onMounted(async () => {
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
             <h1 class="text-2xl font-black text-white tracking-tighter italic">X-TRACKER</h1>
-            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest">Flight Intelligence</p>
+            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest">T'aven baxtale 🍀</p>
           </div>
         </div>
       </div>
