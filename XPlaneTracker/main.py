@@ -2,6 +2,7 @@ import json
 import time
 import os
 import gzip
+import threading
 import requests
 from datetime import datetime
 from XPlaneConnectX import XPlaneConnectX
@@ -19,7 +20,10 @@ xpc = XPlaneConnectX()
 drefs_to_subscribe = [
     ("sim/flightmodel/position/latitude", 50),
     ("sim/flightmodel/position/longitude", 50),
-    ("sim/flightmodel/position/elevation", 50)
+    ("sim/flightmodel/position/elevation", 50),
+    ("sim/flightmodel/failures/onground_any", 50),
+    ("sim/flightmodel/position/vh_ind_fpm", 50),
+    ("sim/flightmodel2/misc/gforce_normal", 50)
 ]
 
 xpc.subscribeDREFs(drefs_to_subscribe)
@@ -32,8 +36,63 @@ flight_path_data = {
         "start_time": datetime.now().isoformat(),
         "columns": ["timestamp", "lat", "lon", "alt"]
     },
-    "path": []
+    "path": [],
+    "landings": []
 }
+
+def landing_monitor():
+    was_on_ground = True
+    fpm_buffer = []
+    
+    time.sleep(2)
+    
+    while True:
+        onground_data = xpc.current_dref_values.get("sim/flightmodel/failures/onground_any", {})
+        fpm_data = xpc.current_dref_values.get("sim/flightmodel/position/vh_ind_fpm", {})
+        gforce_data = xpc.current_dref_values.get("sim/flightmodel2/misc/gforce_normal", {})
+        
+        onground_val = onground_data.get("value")
+        fpm_val = fpm_data.get("value")
+        gforce_val = gforce_data.get("value")
+        
+        if onground_val is not None and fpm_val is not None and gforce_val is not None:
+            is_on_ground = bool(onground_val == 1.0)
+            
+            fpm_buffer.append(fpm_val)
+            if len(fpm_buffer) > 10:
+                fpm_buffer.pop(0)
+                
+            if not was_on_ground and is_on_ground:
+                touchdown_fpm = min(fpm_buffer)
+                
+                max_g = gforce_val
+                end_time = time.time() + 1.0
+                while time.time() < end_time:
+                    current_g_data = xpc.current_dref_values.get("sim/flightmodel2/misc/gforce_normal", {})
+                    current_g = current_g_data.get("value")
+                    if current_g is not None and current_g > max_g:
+                        max_g = current_g
+                    time.sleep(0.02)
+                
+                lat = xpc.current_dref_values["sim/flightmodel/position/latitude"].get("value")
+                lon = xpc.current_dref_values["sim/flightmodel/position/longitude"].get("value")
+                
+                print(f"\n---> LANDING RECORDED: {touchdown_fpm:.0f} FPM, {max_g:.2f} G <---")
+                
+                flight_path_data["landings"].append({
+                    "timestamp": round(time.time(), 2),
+                    "fpm": round(touchdown_fpm, 2),
+                    "g_force": round(max_g, 2),
+                    "lat": round(lat, 5),
+                    "lon": round(lon, 5)
+                })
+                
+            was_on_ground = is_on_ground
+            
+        time.sleep(0.02)
+
+monitor_thread = threading.Thread(target=landing_monitor, daemon=True)
+monitor_thread.start()
 
 last_lat = None
 last_lon = None
