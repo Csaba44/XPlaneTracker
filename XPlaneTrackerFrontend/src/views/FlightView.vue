@@ -187,6 +187,28 @@ const saveFlight = async () => {
   }
 };
 
+const deleteFlight = async (id) => {
+  if (!confirm("Biztosan törölni akarod ezt a járatot?")) return;
+
+  try {
+    await api.delete(`/api/flights/${id}`);
+
+    // Remove the flight from the sidebar list immediately
+    flights.value = flights.value.filter((f) => f.id !== id);
+
+    // If they deleted the flight they were currently viewing, clear the map
+    if (selectedFlightId.value === id) {
+      selectedFlightId.value = null;
+      currentFlightData.value = null;
+    }
+
+    toast.success("Járat sikeresen törölve.");
+  } catch (error) {
+    console.error(error);
+    toast.error("Hiba történt a törlés során.");
+  }
+};
+
 onMounted(async () => {
   if (!authStore.user) {
     await authStore.fetchUser();
@@ -298,12 +320,17 @@ onMounted(async () => {
             </div>
 
             <div class="flex items-center space-x-2">
+              <button v-if="selectedFlightId === flight.id" @click.stop="deleteFlight(flight.id)" class="text-red-500/60 hover:text-red-500 transition-colors bg-red-500/5 hover:bg-red-500/20 p-1.5 rounded-md cursor-pointer" title="Delete Flight">
+                <i class="fa-solid fa-trash"></i>
+              </button>
               <button v-if="selectedFlightId === flight.id" @click.stop="openEditFlightModal(flight)" class="text-slate-400 hover:text-flight-accent transition-colors bg-white/5 hover:bg-flight-accent/10 p-1.5 rounded-md cursor-pointer" title="Edit Flight">
                 <i class="fa-solid fa-pen"></i>
               </button>
+
               <button v-if="selectedFlightId === flight.id" @click.stop="shareFlight(flight.id)" class="text-flight-accent hover:text-white transition-colors bg-flight-accent/10 hover:bg-flight-accent p-1.5 rounded-md cursor-pointer" title="Share Flight">
                 <i class="fa-solid fa-share-nodes"></i>
               </button>
+
               <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors ml-1"></i>
             </div>
           </div>
