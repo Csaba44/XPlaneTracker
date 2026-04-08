@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@import "tailwindcss";
+
+@theme {
+  /* Dark Backgrounds */
+  --color-flight-bg: #0b0e14;
+  --color-flight-sidebar: #151921;
+  --color-flight-card: #1c222d;
+  --color-flight-card-hover: #252d3a;
+
+  /* Primary Accents (Light Blue / Aero) */
+  --color-flight-accent: #38bdf8;
+  --color-flight-accent-glow: rgba(56, 189, 248, 0.15);
+
+  /* Borders & Text */
+  --color-flight-border: #2d3544;
+  --color-flight-muted: #94a3b8;
+}
+
+/* Base Styles */
+#map {
+  height: 100%;
+  width: 100%;
+}
+
+.leaflet-container {
+  background: #0b0e14 !important;
+}
+
+/* Customizing Scrollbar for the Sidebar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #151921;
+}
+::-webkit-scrollbar-thumb {
+  background: #2d3544;
+  border-radius: 10px;
+}
