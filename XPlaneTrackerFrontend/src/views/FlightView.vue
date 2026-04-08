@@ -139,7 +139,7 @@ onMounted(async () => {
             <div class="flex flex-col">
               <span class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Szia testvér!</span>
               <span class="text-xs text-white font-bold truncate max-w-[120px]">
-                {{ authStore.user?.email || "Pilot" }}
+                {{ authStore.user?.name || "Ismeretlen testvér" }}
               </span>
             </div>
             <button @click="handleLogout" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Logout">
