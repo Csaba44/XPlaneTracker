@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../config/api";
@@ -16,6 +16,9 @@ const pathLayers = ref([]);
 const selectedFlightId = ref(null);
 const generatedApiKey = ref(null);
 
+const searchQuery = ref("");
+const selectedAirline = ref("");
+
 const altitudeTiers = [
   { alt: 0, label: "0 - 1k", color: "#ef4444" },
   { alt: 1000, label: "1k - 5k", color: "#f97316" },
@@ -24,6 +27,26 @@ const altitudeTiers = [
   { alt: 25000, label: "25k - 35k", color: "#06b6d4" },
   { alt: 35000, label: "35k+", color: "#3b82f6" },
 ];
+
+const availableAirlines = computed(() => {
+  const airlines = flights.value.map((f) => f.airline).filter(Boolean);
+  return [...new Set(airlines)].sort();
+});
+
+const filteredFlights = computed(() => {
+  return flights.value.filter((flight) => {
+    const matchesSearch = !searchQuery.value || flight.callsign.toLowerCase().includes(searchQuery.value.toLowerCase()) || flight.flight_number.toLowerCase().includes(searchQuery.value.toLowerCase()) || flight.airline.toLowerCase().includes(searchQuery.value.toLowerCase());
+
+    const matchesAirline = !selectedAirline.value || flight.airline === selectedAirline.value;
+
+    return matchesSearch && matchesAirline;
+  });
+});
+
+const clearFilters = () => {
+  searchQuery.value = "";
+  selectedAirline.value = "";
+};
 
 const getColor = (alt) => {
   if (alt < 1000) return "#ef4444";
@@ -153,14 +176,6 @@ const generateApiKey = async () => {
   }
 };
 
-onMounted(async () => {
-  if (!authStore.user) {
-    await authStore.fetchUser();
-  }
-  await fetchFlights();
-  initMap();
-});
-
 const shareFlight = async (id) => {
   const url = `${window.location.origin}/flight/${id}`;
 
@@ -185,7 +200,7 @@ const shareFlight = async (id) => {
 
     try {
       document.execCommand("copy");
-      alert("Link copied! Send it to your friends.");
+      toast.success("Vágólapra másolva.");
     } catch (err) {
       prompt("Copy this link to share:", url);
     } finally {
@@ -193,12 +208,20 @@ const shareFlight = async (id) => {
     }
   }
 };
+
+onMounted(async () => {
+  if (!authStore.user) {
+    await authStore.fetchUser();
+  }
+  await fetchFlights();
+  initMap();
+});
 </script>
 
 <template>
   <div class="flex h-screen w-screen bg-flight-bg text-slate-300 overflow-hidden font-sans">
     <aside class="w-85 flex flex-col bg-flight-sidebar border-r border-flight-border z-[1000] shadow-2xl">
-      <div class="p-8 pb-6">
+      <div class="p-8 pb-4">
         <div class="flex items-center space-x-3 mb-6">
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
@@ -229,12 +252,46 @@ const shareFlight = async (id) => {
         </div>
       </div>
 
+      <div class="px-4 pb-4">
+        <div class="bg-flight-card border border-flight-border rounded-xl p-3 space-y-3 shadow-lg">
+          <div class="relative">
+            <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs"></i>
+            <input v-model="searchQuery" type="text" placeholder="Search flights..." class="w-full bg-flight-bg border border-flight-border rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-flight-accent transition-colors placeholder-slate-600" />
+          </div>
+
+          <div class="flex space-x-2">
+            <select v-model="selectedAirline" class="flex-grow bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
+              <option value="">All Airlines</option>
+              <option v-for="airline in availableAirlines" :key="airline" :value="airline">{{ airline }}</option>
+            </select>
+
+            <button v-if="searchQuery || selectedAirline" @click="clearFilters" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 px-3 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer" title="Clear Filters">
+              <i class="fa-solid fa-filter-circle-xmark"></i>
+            </button>
+          </div>
+
+          <div class="flex justify-between items-center text-[9px] text-slate-500 font-bold uppercase tracking-widest pt-1 border-t border-flight-border/50">
+            <span
+              >Showing: <span class="text-flight-accent">{{ filteredFlights.length }}</span></span
+            >
+            <span v-if="flights.length > 0">Total: {{ flights.length }}</span>
+          </div>
+        </div>
+      </div>
+
       <div class="flex-grow overflow-y-auto px-4 pb-4 space-y-3">
-        <div v-if="flights.length === 0" class="text-center py-20 text-slate-600 italic">
-          <p class="text-sm">Searching for flight logs...</p>
+        <div v-if="flights.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center">
+          <i class="fa-solid fa-satellite-dish text-2xl mb-3 opacity-50"></i>
+          <p class="text-sm italic">Searching for flight logs...</p>
         </div>
 
-        <div v-for="flight in flights" :key="flight.id" @click="viewFlight(flight.id)" :class="['p-5 rounded-xl cursor-pointer transition-all duration-300 border group', selectedFlightId === flight.id ? 'bg-flight-card border-flight-accent shadow-[0_0_20px_rgba(56,189,248,0.1)]' : 'bg-transparent border-transparent hover:bg-flight-card-hover']">
+        <div v-else-if="filteredFlights.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center bg-flight-card/50 rounded-xl border border-flight-border border-dashed">
+          <i class="fa-solid fa-plane-slash text-2xl mb-3 opacity-50 text-flight-accent"></i>
+          <p class="text-sm font-bold text-slate-400">No flights found</p>
+          <p class="text-[10px] uppercase tracking-widest mt-1">Adjust your filters</p>
+        </div>
+
+        <div v-for="flight in filteredFlights" :key="flight.id" @click="viewFlight(flight.id)" :class="['p-5 rounded-xl cursor-pointer transition-all duration-300 border group', selectedFlightId === flight.id ? 'bg-flight-card border-flight-accent shadow-[0_0_20px_rgba(56,189,248,0.1)]' : 'bg-transparent border-transparent hover:bg-flight-card-hover']">
           <div class="flex justify-between items-center mb-3">
             <span :class="['text-xl font-bold transition-colors', selectedFlightId === flight.id ? 'text-flight-accent' : 'text-white group-hover:text-flight-accent']">
               {{ flight.callsign }}
@@ -250,7 +307,7 @@ const shareFlight = async (id) => {
             </div>
 
             <div class="flex items-center space-x-3">
-              <button v-if="selectedFlightId === flight.id" @click.stop="shareFlight(flight.id)" class="text-flight-accent hover:text-white transition-colors bg-flight-accent/10 hover:bg-flight-accent p-1.5 rounded-md" title="Share Flight">
+              <button v-if="selectedFlightId === flight.id" @click.stop="shareFlight(flight.id)" class="text-flight-accent hover:text-white transition-colors bg-flight-accent/10 hover:bg-flight-accent p-1.5 rounded-md cursor-pointer" title="Share Flight">
                 <i class="fa-solid fa-share-nodes"></i>
               </button>
               <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors"></i>
