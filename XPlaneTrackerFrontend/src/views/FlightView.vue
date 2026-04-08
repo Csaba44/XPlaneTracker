@@ -154,6 +154,7 @@ onMounted(async () => {
             <code class="text-[10px] text-flight-accent break-all select-all">{{ generatedApiKey }}</code>
           </div>
         </div>
+        <router-link v-if="authStore.user?.is_admin === 1" to="/admin" class="w-full text-center bg-purple-500/10 hover:bg-purple-500 text-purple-500 hover:text-white border border-purple-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider block mt-2"> Admin </router-link>
       </div>
 
       <div class="px-4 pb-4">
