@@ -14,7 +14,7 @@ parser.add_argument("--logout", action="store_true")
 args = parser.parse_args()
 
 TOKEN_FILE = ".xtracker_token"
-API_BASE_URL = "http://xtracker.local:5173/api"
+API_BASE_URL = "https://api.vacchunesports.online/api"
 API_FLIGHTS_URL = f"{API_BASE_URL}/flights"
 API_USER_URL = f"{API_BASE_URL}/user"
 
@@ -26,7 +26,7 @@ if args.logout:
         print("You are not currently logged in.")
     exit(0)
 
-print(f"--- X-TRACKER ---")
+print(f"--- CSABOLANTA ---")
 
 if os.path.exists(TOKEN_FILE):
     with open(TOKEN_FILE, "r") as f:
@@ -34,7 +34,7 @@ if os.path.exists(TOKEN_FILE):
 else:
     print("Authentication required.")
     print("To get your API key:")
-    print("1. Log in to the X-Tracker web dashboard.")
+    print("1. Log in to the CSABOLANTA web dashboard.")
     print("2. Click 'Generate API Key' in the left sidebar.")
     
     TOKEN = input("\nPaste your API Key here: ").strip()

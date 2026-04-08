@@ -3,9 +3,9 @@
     <div class="max-w-3xl w-full space-y-8 animate-in fade-in duration-700">
       <div class="flex flex-col items-center">
         <div class="flex items-stretch gap-4">
-          <h1 class="text-6xl md:text-8xl font-black text-white tracking-tighter italic leading-none m-0 p-0">X-TRACKER</h1>
+          <h1 class="text-6xl md:text-8xl font-black text-white tracking-tighter italic leading-none m-0 p-0">CSABOLANTA</h1>
         </div>
-        <p class="text-flight-accent font-bold tracking-[0.3em] uppercase mt-4 text-sm md:text-base">Volanta Dzsipszi verzió a széptestvéreknek</p>
+        <p class="text-flight-accent font-bold tracking-[0.3em] uppercase mt-4 text-sm md:text-base">Volanta gipsy verzió a széptestvéreknek</p>
       </div>
 
       <p class="text-slate-400 text-xl md:text-2xl font-medium italic">"Gyors, pacek, nem laggoltat, de zoral!"</p>

@@ -57,7 +57,7 @@ onMounted(() => {
         <div class="flex items-center space-x-3 mb-6">
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
-            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">X-TRACKER</h1>
+            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">CSABOLANTA</h1>
             <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">Az egyik testvér által megosztva</p>
           </div>
         </div>

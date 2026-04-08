@@ -49,7 +49,7 @@ const handleLogin = async () => {
       <form @submit.prevent="handleLogin" class="space-y-6">
         <div class="space-y-2">
           <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Email</label>
-          <input v-model="email" type="email" required class="w-full bg-flight-card border border-flight-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" placeholder="dzsipszi@pilota.hu" />
+          <input v-model="email" type="email" required class="w-full bg-flight-card border border-flight-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" placeholder="roland.nyisztor@trenerkft.hu" />
         </div>
 
         <div class="space-y-2">
