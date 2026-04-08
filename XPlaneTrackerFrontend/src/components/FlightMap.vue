@@ -330,7 +330,7 @@ const drawFlight = (data) => {
       ],
       { color: getColor(point[3]), weight: 4, opacity: 0.9, lineCap: "round", pane: "flightPathPane" },
     ).addTo(map);
-    poly.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${point[3]} ft<br><b>GS:</b> ${point[4] || "N/A"}</div>`, { sticky: true, className: "flight-path-tooltip" });
+    poly.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${point[3]} ft<br><b>GS:</b> ${point[4] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip" });
     pathLayers.push(poly);
     segments.push(poly);
   });
