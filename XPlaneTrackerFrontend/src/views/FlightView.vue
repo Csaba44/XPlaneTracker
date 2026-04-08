@@ -24,6 +24,16 @@ const profileForm = ref({
   password: "",
 });
 
+const isEditFlightModalOpen = ref(false);
+const editFlightForm = ref({
+  id: null,
+  callsign: "",
+  flight_number: "",
+  airline: "",
+  dep_icao: "",
+  arr_icao: "",
+});
+
 const altitudeTiers = [
   { alt: 0, label: "0 - 1k", color: "#ef4444" },
   { alt: 1000, label: "1k - 5k", color: "#f97316" },
@@ -136,11 +146,44 @@ const saveProfile = async () => {
   try {
     const response = await api.put("/api/user/profile", profileForm.value);
     authStore.user = response.data;
-    toast.success("Profile updated successfully");
+    toast.success("Profil sikeresen frissítve.");
     closeProfileModal();
   } catch (error) {
     console.error(error);
-    toast.error(error.response?.data?.message || "Failed to update profile");
+    toast.error(error.response?.data?.message || "Hiba a profil frissítésekor.");
+  }
+};
+
+const openEditFlightModal = (flight) => {
+  editFlightForm.value = {
+    id: flight.id,
+    callsign: flight.callsign || "",
+    flight_number: flight.flight_number || "",
+    airline: flight.airline || "",
+    dep_icao: flight.dep_icao || "",
+    arr_icao: flight.arr_icao || "",
+  };
+  isEditFlightModalOpen.value = true;
+};
+
+const closeEditFlightModal = () => {
+  isEditFlightModalOpen.value = false;
+};
+
+const saveFlight = async () => {
+  try {
+    const response = await api.put(`/api/flights/${editFlightForm.value.id}`, editFlightForm.value);
+
+    const index = flights.value.findIndex((f) => f.id === editFlightForm.value.id);
+    if (index !== -1) {
+      flights.value[index] = { ...flights.value[index], ...response.data };
+    }
+
+    toast.success("Járat sikeresen frissítve.");
+    closeEditFlightModal();
+  } catch (error) {
+    console.error(error);
+    toast.error(error.response?.data?.message || "Hiba a járat frissítésekor.");
   }
 };
 
@@ -254,11 +297,14 @@ onMounted(async () => {
               <span class="text-[10px]">{{ new Date(flight.start_time).toLocaleDateString() }}</span>
             </div>
 
-            <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2">
+              <button v-if="selectedFlightId === flight.id" @click.stop="openEditFlightModal(flight)" class="text-slate-400 hover:text-flight-accent transition-colors bg-white/5 hover:bg-flight-accent/10 p-1.5 rounded-md cursor-pointer" title="Edit Flight">
+                <i class="fa-solid fa-pen"></i>
+              </button>
               <button v-if="selectedFlightId === flight.id" @click.stop="shareFlight(flight.id)" class="text-flight-accent hover:text-white transition-colors bg-flight-accent/10 hover:bg-flight-accent p-1.5 rounded-md cursor-pointer" title="Share Flight">
                 <i class="fa-solid fa-share-nodes"></i>
               </button>
-              <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors"></i>
+              <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors ml-1"></i>
             </div>
           </div>
         </div>
@@ -299,6 +345,46 @@ onMounted(async () => {
 
           <div class="flex space-x-3 pt-6">
             <button type="button" @click="closeProfileModal" class="flex-1 bg-flight-card hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition-colors uppercase tracking-widest text-xs border border-flight-border cursor-pointer">Mégse</button>
+            <button type="submit" class="flex-1 bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-3 rounded-lg transition-colors shadow-lg uppercase tracking-widest text-xs cursor-pointer">Mentés</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div v-if="isEditFlightModalOpen" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[5000] p-4 backdrop-blur-sm">
+      <div class="bg-flight-sidebar border border-flight-border p-8 rounded-2xl shadow-2xl w-full max-w-md">
+        <h2 class="text-2xl font-black text-white italic mb-6 uppercase tracking-tighter">Járat Szerkesztése</h2>
+
+        <form @submit.prevent="saveFlight" class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Callsign</label>
+              <input v-model="editFlightForm.callsign" type="text" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Flight Number</label>
+              <input v-model="editFlightForm.flight_number" type="text" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+            </div>
+          </div>
+
+          <div>
+            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Airline</label>
+            <input v-model="editFlightForm.airline" type="text" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">DEP ICAO</label>
+              <input v-model="editFlightForm.dep_icao" type="text" pattern="[A-Za-z0-9]+" maxlength="4" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors uppercase" placeholder="E pl. LHBP" />
+            </div>
+            <div>
+              <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">ARR ICAO</label>
+              <input v-model="editFlightForm.arr_icao" type="text" pattern="[A-Za-z0-9]+" maxlength="4" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors uppercase" placeholder="E pl. EGLL" />
+            </div>
+          </div>
+
+          <div class="flex space-x-3 pt-6">
+            <button type="button" @click="closeEditFlightModal" class="flex-1 bg-flight-card hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition-colors uppercase tracking-widest text-xs border border-flight-border cursor-pointer">Mégse</button>
             <button type="submit" class="flex-1 bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-3 rounded-lg transition-colors shadow-lg uppercase tracking-widest text-xs cursor-pointer">Mentés</button>
           </div>
         </form>

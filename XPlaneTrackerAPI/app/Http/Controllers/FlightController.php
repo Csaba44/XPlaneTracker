@@ -13,7 +13,6 @@ class FlightController extends Controller
 {
     public function index()
     {
-        // Only return flights belonging to the currently authenticated user
         $flights = Flight::where('user_id', Auth::id())->get();
         return response()->json($flights);
     }
@@ -103,9 +102,6 @@ class FlightController extends Controller
 
     public function show(Flight $flight)
     {
-        // NO AUTHORIZATION CHECK HERE
-        // Anyone who has the flight ID/URL can fetch this file.
-
         $disk = Storage::disk('public');
 
         if (!$disk->exists($flight->file_path)) {
@@ -122,24 +118,33 @@ class FlightController extends Controller
 
     public function update(Request $request, Flight $flight)
     {
-        // Check if the user owns this flight
         if ($flight->user_id !== Auth::id()) {
             return response()->json(['error' => 'Unauthorized action.'], 403);
         }
 
-        $flight->update($request->only([
-            'callsign',
-            'flight_number',
-            'airline',
-            'start_time'
-        ]));
+        $validated = $request->validate([
+            'callsign' => 'nullable|string|max:255',
+            'flight_number' => 'nullable|string|max:255',
+            'airline' => 'nullable|string|max:255',
+            'dep_icao' => 'nullable|alpha_num|max:10',
+            'arr_icao' => 'nullable|alpha_num|max:10',
+            'start_time' => 'nullable|date'
+        ]);
+
+        if (isset($validated['dep_icao'])) {
+            $validated['dep_icao'] = strtoupper($validated['dep_icao']);
+        }
+        if (isset($validated['arr_icao'])) {
+            $validated['arr_icao'] = strtoupper($validated['arr_icao']);
+        }
+
+        $flight->update($validated);
 
         return response()->json($flight);
     }
 
     public function destroy(Flight $flight)
     {
-        // Check if the user owns this flight
         if ($flight->user_id !== Auth::id()) {
             return response()->json(['error' => 'Unauthorized action.'], 403);
         }
