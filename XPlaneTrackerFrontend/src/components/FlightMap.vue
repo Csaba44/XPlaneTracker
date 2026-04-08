@@ -291,7 +291,7 @@ const fetchAndDrawRunways = async (lat, lon) => {
   pendingRequests.add(key);
   try {
     const response = await api.get(`/api/runways?lat=${lat}&lon=${lon}`);
-    const data = await response.json();
+    const data = response.data;
     if (data.elements) {
       runwayCache.set(key, data.elements);
       data.elements.forEach(drawRunway);
@@ -315,6 +315,7 @@ const clearMap = () => {
   if (!map) return;
   pathLayers.forEach((l) => map.removeLayer(l));
   pathLayers = [];
+  pendingRequests.clear();
 };
 
 const drawFlight = (data) => {
