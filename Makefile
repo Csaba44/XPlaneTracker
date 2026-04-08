@@ -104,22 +104,17 @@ migrate-fresh-seed:
 .PHONY: build
 build:
 	@echo "Building BACKEND image ($(VERSION))..."
-	docker build -t $(BACKEND_IMAGE):$(VERSION) ./api
+	docker build -t $(BACKEND_IMAGE):$(VERSION) ./XPlaneTrackerAPI
 	docker tag $(BACKEND_IMAGE):$(VERSION) $(BACKEND_IMAGE):latest
 
 	@echo "Building FRONTEND + NGINX image ($(VERSION))..."
-	docker build -t $(FRONTEND_IMAGE):$(VERSION) --target prod ./frontend
+	docker build -t $(FRONTEND_IMAGE):$(VERSION) --target prod ./XPlaneTrackerFrontend
 	docker tag $(FRONTEND_IMAGE):$(VERSION) $(FRONTEND_IMAGE):latest
-
-	@echo "Building WEBSOCKET image ($(VERSION))..."
-	docker build -t $(WEBSOCKET_IMAGE):$(VERSION) --target prod ./websocket
-	docker tag $(WEBSOCKET_IMAGE):$(VERSION) $(WEBSOCKET_IMAGE):latest
 
 	@echo ""
 	@echo "Images built:"
 	@echo "  $(BACKEND_IMAGE):$(VERSION)"
 	@echo "  $(FRONTEND_IMAGE):$(VERSION)"
-	@echo "  $(WEBSOCKET_IMAGE):$(VERSION)"
 	@echo ""
 
 # -------------------------
@@ -135,10 +130,6 @@ push:
 	docker push $(FRONTEND_IMAGE):$(VERSION)
 	docker push $(FRONTEND_IMAGE):latest
 
-	@echo "Pushing WEBSOCKET image..."
-	docker push $(WEBSOCKET_IMAGE):$(VERSION)
-	docker push $(WEBSOCKET_IMAGE):latest
-
 	@echo "Images pushed to Docker Hub."
 
 # -------------------------
@@ -150,7 +141,6 @@ release: build push
 	@echo "Release completed:"
 	@echo "  $(BACKEND_IMAGE):$(VERSION)"
 	@echo "  $(FRONTEND_IMAGE):$(VERSION)"
-	@echo "  $(WEBSOCKET_IMAGE):$(VERSION)"
 	@echo ""
 
 # -------------------------

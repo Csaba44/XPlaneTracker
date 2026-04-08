@@ -20,10 +20,14 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'http://xtracker.hu',
-        'http://api.xtracker.hu',
-        'https://xtracker.hu',
-        'https://api.xtracker.hu',
+        'http://vacchunesports.online',
+        'http://api.vacchunesports.online',
+        'https://vacchunesports.online',
+        'https://api.vacchunesports.online',
+        'http://vacchunesports.online',
+        'http://api.vacchunesports.online',
+        'https://vacchunesports.online',
+        'https://api.vacchunesports.online',
         'http://127.0.0.1:5173',
         'http://localhost:5173',
         'http://xtracker.local:5173',
