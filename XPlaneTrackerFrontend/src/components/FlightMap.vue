@@ -14,10 +14,19 @@ const mapContainer = ref(null);
 let map = null;
 let pathLayers = [];
 
+// ---------------------------------------------------------------------------
+// Cache & Network State
+// ---------------------------------------------------------------------------
+// Stores the actual runway data elements so they survive flight switching
 const runwayCache = new Map();
+// Prevents duplicate parallel API calls if a pilot lands twice at the same airport
+const pendingRequests = new Set();
 
-const OVERPASS_MIRRORS = ["https://overpass.kumi.systems/api/interpreter", "https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+const localCacheKey = (lat, lon) => `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
 
+// ---------------------------------------------------------------------------
+// Colour helper
+// ---------------------------------------------------------------------------
 const getColor = (alt) => {
   if (alt < 1000) return "#ef4444";
   if (alt < 5000) return "#f97316";
@@ -27,6 +36,9 @@ const getColor = (alt) => {
   return "#3b82f6";
 };
 
+// ---------------------------------------------------------------------------
+// Spherical geometry helpers
+// ---------------------------------------------------------------------------
 const bearing = (lat1, lon1, lat2, lon2) => {
   const toRad = (d) => (d * Math.PI) / 180;
   const φ1 = toRad(lat1),
@@ -77,6 +89,9 @@ const angleDiff = (a, b) => {
   return d > 180 ? 360 - d : d;
 };
 
+// ---------------------------------------------------------------------------
+// Runway Drawing Logic
+// ---------------------------------------------------------------------------
 const drawRunway = (el) => {
   if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
 
@@ -101,16 +116,18 @@ const drawRunway = (el) => {
   const right = offsetPolyline(cl, half);
   const left = offsetPolyline(cl, -half);
 
+  // Asphalt
   pathLayers.push(
     L.polygon([...right, ...[...left].reverse()], {
       color: "transparent",
       fillColor: "#111111",
       fillOpacity: 1,
       interactive: false,
-      pane: "runwaysPane", // Placed in custom runway pane
+      pane: "runwaysPane",
     }).addTo(map),
   );
 
+  // Edges
   [right, left].forEach((edge) => {
     pathLayers.push(
       L.polyline(edge, {
@@ -123,6 +140,7 @@ const drawRunway = (el) => {
     );
   });
 
+  // Centerline
   pathLayers.push(
     L.polyline(cl, {
       color: "#ffffff",
@@ -134,6 +152,7 @@ const drawRunway = (el) => {
     }).addTo(map),
   );
 
+  // Piano Keys
   const drawPianoKeys = (thresholdPt, inwardBrg) => {
     const perpBrg = (inwardBrg + 90) % 360;
     const numStripes = 8;
@@ -169,6 +188,7 @@ const drawRunway = (el) => {
   drawPianoKeys(cl[0], leInward);
   drawPianoKeys(cl[cl.length - 1], heInward);
 
+  // TDZ Bars
   const runwayLen = distanceM(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
   const tzDistances = [150, 300, 450, 600, 750, 900].filter((d) => d < runwayLen - 150);
   const barLenM = 22.5;
@@ -207,6 +227,7 @@ const drawRunway = (el) => {
   drawTDZBars(cl[0], leInward);
   drawTDZBars(cl[cl.length - 1], heInward);
 
+  // Labels
   if (el.tags?.ref) {
     let parts = el.tags.ref.split("/");
     let leRef = parts[0];
@@ -214,12 +235,7 @@ const drawRunway = (el) => {
 
     if (leRef && heRef) {
       const hdg1 = parseInt(leRef, 10) * 10;
-      const getAngleDiff = (a, b) => {
-        const d = Math.abs((a - b) % 360);
-        return d > 180 ? 360 - d : d;
-      };
-
-      if (getAngleDiff(hdg1, leInward) > getAngleDiff(hdg1, heInward)) {
+      if (angleDiff(hdg1, leInward) > angleDiff(hdg1, heInward)) {
         [leRef, heRef] = [heRef, leRef];
       }
     }
@@ -233,7 +249,6 @@ const drawRunway = (el) => {
         iconSize: [40, 20],
         iconAnchor: [20, 10],
       });
-      // Labels stay in the default marker pane so they are above the runway
       pathLayers.push(L.marker(pos, { icon, interactive: false }).addTo(map));
     };
 
@@ -242,56 +257,52 @@ const drawRunway = (el) => {
   }
 };
 
-const cacheKey = (lat, lon) => `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
-
-const fetchOverpass = async (query) => {
-  for (const mirror of OVERPASS_MIRRORS) {
-    try {
-      const res = await fetch(`${mirror}?data=${encodeURIComponent(query)}`, {
-        signal: AbortSignal.timeout(12000),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return await res.json();
-    } catch (err) {
-      console.warn(`Overpass mirror failed (${mirror}):`, err.message);
-    }
-  }
-  throw new Error("All Overpass mirrors failed");
-};
-
+// ---------------------------------------------------------------------------
+// Backend Proxy Fetching & Local Memory
+// ---------------------------------------------------------------------------
 const fetchAndDrawRunways = async (lat, lon) => {
-  const key = cacheKey(lat, lon);
+  const key = localCacheKey(lat, lon);
 
+  // 1. If we already downloaded this airport, just re-draw it from memory!
   if (runwayCache.has(key)) {
     runwayCache.get(key).forEach(drawRunway);
     return;
   }
 
-  const offsetLat = 0.025;
-  const offsetLon = 0.035;
-  const s = lat - offsetLat;
-  const n = lat + offsetLat;
-  const w = lon - offsetLon;
-  const e = lon + offsetLon;
+  // 2. If a network request is currently running for this airport, don't start a second one
+  if (pendingRequests.has(key)) return;
+  pendingRequests.add(key);
 
-  const query = `[out:json][timeout:10];way["aeroway"="runway"](${s},${w},${n},${e});out geom tags;`;
+  const url = `/api/runways?lat=${lat}&lon=${lon}`;
 
   try {
-    const data = await fetchOverpass(query);
-    if (!data.elements?.length) return;
-    runwayCache.set(key, data.elements);
-    data.elements.forEach(drawRunway);
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Backend returned HTTP ${response.status}`);
+
+    const data = await response.json();
+
+    if (data.elements && data.elements.length > 0) {
+      // 3. Save the data to local memory so it survives flight-switching
+      runwayCache.set(key, data.elements);
+
+      // 4. Draw it on the map
+      data.elements.forEach(drawRunway);
+    }
   } catch (err) {
-    console.error("Could not load runway data:", err.message);
+    console.error("Could not load runway data from backend proxy:", err.message);
+  } finally {
+    // Clear the pending lock so it can be retried later if it failed
+    pendingRequests.delete(key);
   }
 };
 
+// ---------------------------------------------------------------------------
+// Map Init & Core Render
+// ---------------------------------------------------------------------------
 const initMap = () => {
   map = L.map(mapContainer.value, { zoomControl: false }).setView([47.0, 19.0], 7);
   L.control.zoom({ position: "bottomright" }).addTo(map);
 
-  // --- NEW: Custom Panes to control rendering order (Z-Index) ---
-  // Default overlayPane is 400. We put runways below it, and flight path above it.
   map.createPane("runwaysPane");
   map.getPane("runwaysPane").style.zIndex = 390;
 
@@ -329,7 +340,7 @@ const drawFlight = (data) => {
         weight: 4,
         opacity: 0.9,
         lineCap: "round",
-        pane: "flightPathPane", // Placed in custom flight path pane
+        pane: "flightPathPane",
       },
     ).addTo(map);
     pathLayers.push(poly);
@@ -337,8 +348,6 @@ const drawFlight = (data) => {
   });
 
   if (data.landings?.length) {
-    const fetched = new Set();
-
     data.landings.forEach((landing) => {
       const icon = L.divIcon({
         html: `<div class="bg-flight-accent w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-lg shadow-cyan-500/50">
@@ -371,11 +380,8 @@ const drawFlight = (data) => {
       );
       pathLayers.push(marker);
 
-      const key = cacheKey(landing.lat, landing.lon);
-      if (!fetched.has(key)) {
-        fetched.add(key);
-        fetchAndDrawRunways(landing.lat, landing.lon);
-      }
+      // Trigger the backend API call for this landing
+      fetchAndDrawRunways(landing.lat, landing.lon);
     });
   }
 

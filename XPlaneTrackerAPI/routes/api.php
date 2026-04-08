@@ -6,11 +6,12 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FlightController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\RunwayController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::get('/flights/{flight}', [FlightController::class, 'show']);
-
+Route::get('/runways', [RunwayController::class, 'getRunways']);
 
 Route::middleware('auth:sanctum')->group(function () {
 
