@@ -101,11 +101,9 @@ const shareFlight = async (id) => {
   } else {
     const textArea = document.createElement("textarea");
     textArea.value = url;
-
     textArea.style.position = "fixed";
     textArea.style.left = "-999999px";
     textArea.style.top = "-999999px";
-
     document.body.appendChild(textArea);
     textArea.focus();
     textArea.select();
@@ -235,10 +233,17 @@ onMounted(async () => {
         </div>
 
         <div v-for="flight in filteredFlights" :key="flight.id" @click="viewFlight(flight.id)" :class="['p-5 rounded-xl cursor-pointer transition-all duration-300 border group', selectedFlightId === flight.id ? 'bg-flight-card border-flight-accent shadow-[0_0_20px_rgba(56,189,248,0.1)]' : 'bg-transparent border-transparent hover:bg-flight-card-hover']">
-          <div class="flex justify-between items-center mb-3">
-            <span :class="['text-xl font-bold transition-colors', selectedFlightId === flight.id ? 'text-flight-accent' : 'text-white group-hover:text-flight-accent']">
-              {{ flight.callsign }}
-            </span>
+          <div class="flex justify-between items-start mb-3">
+            <div class="flex flex-col">
+              <span :class="['text-xl font-bold transition-colors', selectedFlightId === flight.id ? 'text-flight-accent' : 'text-white group-hover:text-flight-accent']">
+                {{ flight.callsign }}
+              </span>
+              <div class="flex items-center space-x-2 mt-1 bg-black/30 w-fit px-2 py-0.5 rounded border border-white/5">
+                <span class="text-[11px] font-black text-slate-300 tracking-widest">{{ flight.dep_icao || "----" }}</span>
+                <i class="fa-solid fa-plane text-[9px] text-flight-accent"></i>
+                <span class="text-[11px] font-black text-slate-300 tracking-widest">{{ flight.arr_icao || "----" }}</span>
+              </div>
+            </div>
             <span class="text-[10px] bg-flight-bg text-flight-accent border border-flight-accent/30 px-2 py-1 rounded font-mono">
               {{ flight.flight_number }}
             </span>

@@ -16,6 +16,8 @@ return new class extends Migration
             $table->foreignId("user_id")->constrained()->cascadeOnDelete();
             $table->string("callsign");
             $table->string("flight_number");
+            $table->string("dep_icao")->nullable();
+            $table->string("arr_icao")->nullable();
             $table->string("airline");
             $table->dateTime("start_time");
             $table->string("file_path");

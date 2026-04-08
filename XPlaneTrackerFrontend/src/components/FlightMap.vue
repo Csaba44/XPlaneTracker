@@ -273,6 +273,7 @@ const fetchAndDrawRunways = async (lat, lon) => {
   if (pendingRequests.has(key)) return;
   pendingRequests.add(key);
 
+  // Calls your Laravel backend
   const url = `/api/runways?lat=${lat}&lon=${lon}`;
 
   try {
@@ -327,26 +328,42 @@ const drawFlight = (data) => {
 
   const segments = [];
 
+  // Draw Flight Path Lines
   data.path.forEach((point, i) => {
     if (i === data.path.length - 1) return;
     const next = data.path[i + 1];
+
+    const speed = point[4] ? `${point[4]} kts` : "N/A";
+    const alt = point[3];
+
     const poly = L.polyline(
       [
         [point[1], point[2]],
         [next[1], next[2]],
       ],
       {
-        color: getColor(point[3]),
+        color: getColor(alt),
         weight: 4,
         opacity: 0.9,
         lineCap: "round",
         pane: "flightPathPane",
       },
     ).addTo(map);
+
+    // Hover Tooltip for Altitude and Ground Speed
+    poly.bindTooltip(
+      `<div class="font-mono text-xs">
+         <b>ALT:</b> ${alt} ft<br>
+         <b>GS:</b> ${speed}
+       </div>`,
+      { sticky: true, className: "flight-path-tooltip" },
+    );
+
     pathLayers.push(poly);
     segments.push(poly);
   });
 
+  // Process Landings
   if (data.landings?.length) {
     data.landings.forEach((landing) => {
       const icon = L.divIcon({
@@ -428,5 +445,13 @@ onMounted(() => {
   white-space: nowrap;
   transform-origin: center center;
   user-select: none;
+}
+
+/* Optional styling for the hover telemetry tooltip */
+.flight-path-tooltip {
+  background: #1e293b;
+  color: white;
+  border: 1px solid #475569;
+  border-radius: 4px;
 }
 </style>

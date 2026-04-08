@@ -12,8 +12,10 @@ class Flight extends Model
         'callsign',
         'flight_number',
         'airline',
+        'dep_icao',
+        'arr_icao',
         'start_time',
-        'file_path'
+        'file_path',
     ];
 
     public function user(): BelongsTo

@@ -79,7 +79,7 @@ except requests.exceptions.RequestException as e:
 HOST_IP = args.host
 
 print(f"XPlane IP: {HOST_IP}")
-print(f"API: {API_FLIGHTS_URL}")
+print(f"API: {API_FLIGHTS_URL}\n")
 
 callsign = input("Enter callsign (optional): ").strip() or "unknown"
 flight_number = input("Enter flight number (optional): ").strip() or "unknown"
@@ -89,13 +89,15 @@ os.makedirs("flights", exist_ok=True)
 
 xpc = XPlaneConnectX(ip=HOST_IP)
 
+# Subscribed to groundspeed to calculate Knots
 drefs_to_subscribe = [
     ("sim/flightmodel/position/latitude", 50),
     ("sim/flightmodel/position/longitude", 50),
     ("sim/flightmodel/position/elevation", 50),
     ("sim/flightmodel/failures/onground_any", 50),
     ("sim/flightmodel/position/vh_ind_fpm", 50),
-    ("sim/flightmodel2/misc/gforce_normal", 50)
+    ("sim/flightmodel2/misc/gforce_normal", 50),
+    ("sim/flightmodel/position/groundspeed", 50)
 ]
 
 xpc.subscribeDREFs(drefs_to_subscribe)
@@ -106,7 +108,8 @@ flight_path_data = {
         "flight_number": flight_number,
         "airline": airline,
         "start_time": datetime.now().isoformat(),
-        "columns": ["timestamp", "lat", "lon", "alt"]
+        # 5 Columns: Speed is included
+        "columns": ["timestamp", "lat", "lon", "alt", "speed"]
     },
     "path": [],
     "landings": []
@@ -173,27 +176,31 @@ last_lon = None
 last_alt = None
 
 try:
+    print("\nTracking started. Press Ctrl+C to stop and upload flight.")
     while True:
         lat_data = xpc.current_dref_values.get("sim/flightmodel/position/latitude", {})
         lon_data = xpc.current_dref_values.get("sim/flightmodel/position/longitude", {})
         alt_data = xpc.current_dref_values.get("sim/flightmodel/position/elevation", {})
+        speed_data = xpc.current_dref_values.get("sim/flightmodel/position/groundspeed", {})
 
         lat = lat_data.get("value")
         lon = lon_data.get("value")
         alt = alt_data.get("value")
+        speed_ms = speed_data.get("value")
 
-        if lat is not None and lon is not None and alt is not None:
+        if lat is not None and lon is not None and alt is not None and speed_ms is not None:
             lat = round(lat, 5)
             lon = round(lon, 5)
             alt = int(alt * 3.28084)
+            speed_kts = int(speed_ms * 1.94384)
 
             if lat != last_lat or lon != last_lon or alt != last_alt:
                 current_time = round(time.time(), 2)
                 formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                 
-                print(f"[{formatted_time}] Lat: {lat}, Lon: {lon}, Alt: {alt} ft")
+                print(f"[{formatted_time}] Lat: {lat}, Lon: {lon}, Alt: {alt} ft, GS: {speed_kts} kts")
                 
-                flight_path_data["path"].append([current_time, lat, lon, alt])
+                flight_path_data["path"].append([current_time, lat, lon, alt, speed_kts])
                 
                 last_lat = lat
                 last_lon = lon
