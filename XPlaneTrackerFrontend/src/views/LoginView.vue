@@ -24,9 +24,9 @@ const handleLogin = async () => {
     router.push("/flights");
   } catch (error) {
     if (error.response?.status === 422 || error.response?.status === 401) {
-      errorMessage.value = "Hibás felhasználónév vagy jelszó! Tesó, ne próbálkozz...";
+      errorMessage.value = "Hibás felhasználónév vagy jelszó! Jo hulye vagy.";
     } else {
-      errorMessage.value = "Valami megzuhant a szerveren. Próbáld újra!";
+      errorMessage.value = "Valami nem jó geci. Próbáld újra!";
     }
   } finally {
     isLoading.value = false;
@@ -48,7 +48,7 @@ const handleLogin = async () => {
 
       <form @submit.prevent="handleLogin" class="space-y-6">
         <div class="space-y-2">
-          <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Felhasználónév (Email)</label>
+          <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Email</label>
           <input v-model="email" type="email" required class="w-full bg-flight-card border border-flight-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" placeholder="dzsipszi@pilota.hu" />
         </div>
 
@@ -58,7 +58,7 @@ const handleLogin = async () => {
         </div>
 
         <button type="submit" :disabled="isLoading" class="w-full bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-4 rounded-xl transition-all shadow-lg uppercase tracking-widest text-sm mt-4 cursor-pointer disabled:opacity-50">
-          {{ isLoading ? "Csatlakozás a toronyhoz..." : "Zha tar aba muro phral, megyunk repulozni" }}
+          {{ isLoading ? "Varjal teso mindjart..." : "Zha tar aba muro phral, megyunk repulozni" }}
         </button>
       </form>
 

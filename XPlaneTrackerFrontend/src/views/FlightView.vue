@@ -256,12 +256,12 @@ onMounted(async () => {
         <div class="bg-flight-card border border-flight-border rounded-xl p-3 space-y-3 shadow-lg">
           <div class="relative">
             <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs"></i>
-            <input v-model="searchQuery" type="text" placeholder="Search flights..." class="w-full bg-flight-bg border border-flight-border rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-flight-accent transition-colors placeholder-slate-600" />
+            <input v-model="searchQuery" type="text" placeholder="Keresés..." class="w-full bg-flight-bg border border-flight-border rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-flight-accent transition-colors placeholder-slate-600" />
           </div>
 
           <div class="flex space-x-2">
             <select v-model="selectedAirline" class="flex-grow bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-              <option value="">All Airlines</option>
+              <option value="">Összes</option>
               <option v-for="airline in availableAirlines" :key="airline" :value="airline">{{ airline }}</option>
             </select>
 
@@ -272,9 +272,9 @@ onMounted(async () => {
 
           <div class="flex justify-between items-center text-[9px] text-slate-500 font-bold uppercase tracking-widest pt-1 border-t border-flight-border/50">
             <span
-              >Showing: <span class="text-flight-accent">{{ filteredFlights.length }}</span></span
+              >Találat: <span class="text-flight-accent">{{ filteredFlights.length }}</span></span
             >
-            <span v-if="flights.length > 0">Total: {{ flights.length }}</span>
+            <span v-if="flights.length > 0">Összesen: {{ flights.length }}</span>
           </div>
         </div>
       </div>
