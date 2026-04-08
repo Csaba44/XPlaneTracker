@@ -60,7 +60,6 @@ const viewFlight = async (id) => {
     clearMap();
     if (!map.value) return;
 
-    // 1. Draw Flight Path
     const segments = [];
     data.path.forEach((point, i) => {
       if (i === data.path.length - 1) return;
@@ -81,7 +80,6 @@ const viewFlight = async (id) => {
       segments.push(poly);
     });
 
-    // 2. Draw Landings
     data.landings.forEach((landing) => {
       const icon = L.divIcon({
         html: `<div class="bg-flight-accent w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-lg shadow-cyan-500/50">
@@ -143,8 +141,8 @@ onMounted(async () => {
         <div class="flex items-center space-x-3">
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
-            <h1 class="text-2xl font-black text-white tracking-tighter italic">X-TRACKER</h1>
-            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest">T'aven baxtale 🍀</p>
+            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">X-TRACKER</h1>
+            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">Muro phralenge 🍀</p>
           </div>
         </div>
       </div>
