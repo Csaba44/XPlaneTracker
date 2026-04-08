@@ -45,13 +45,5 @@ services:
     depends_on:
       - backend
 
-  websocket:
-    image: csabi44/xtracker-websocket:latest
-    env_file:
-      - .env.prod
-    restart: unless-stopped
-    depends_on:
-      - backend
-
 volumes:
   mysql_data_xtracker:
