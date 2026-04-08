@@ -50,6 +50,17 @@ class AuthController extends Controller
         ], 200);
     }
 
+    public function createToken(Request $request)
+    {
+        $request->user()->tokens()->where('name', 'xtracker-cli')->delete();
+
+        $token = $request->user()->createToken('xtracker-cli');
+
+        return response()->json([
+            'token' => $token->plainTextToken
+        ]);
+    }
+
     /**
      * Get the authenticated user.
      */

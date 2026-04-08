@@ -10,12 +10,44 @@ from XPlaneConnectX import XPlaneConnectX
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
+parser.add_argument("--logout", action="store_true")
 args = parser.parse_args()
+
+TOKEN_FILE = ".xtracker_token"
+
+if args.logout:
+    if os.path.exists(TOKEN_FILE):
+        os.remove(TOKEN_FILE)
+        print("Logged out successfully. Saved token has been deleted.")
+    else:
+        print("You are not currently logged in.")
+    exit(0)
+
+print(f"--- X-TRACKER ---")
+
+if os.path.exists(TOKEN_FILE):
+    with open(TOKEN_FILE, "r") as f:
+        TOKEN = f.read().strip()
+else:
+    print("Authentication required.")
+    print("To get your API key:")
+    print("1. Log in to the X-Tracker web dashboard.")
+    print("2. Open the Flights view.")
+    print("3. Click 'Generate API Key' in the left sidebar.")
+    
+    TOKEN = input("\nPaste your API Key here: ").strip()
+    
+    if not TOKEN:
+        print("No API Key provided. Exiting.")
+        exit(1)
+        
+    with open(TOKEN_FILE, "w") as f:
+        f.write(TOKEN)
+    print("API Key saved securely.\n")
 
 HOST_IP = args.host
 API_URL = f"http://xtracker.local:5173/api/flights"
 
-print(f"--- X-TRACKER ---")
 print(f"XPlane IP: {HOST_IP}")
 print(f"API: {API_URL}")
 
@@ -152,13 +184,19 @@ except KeyboardInterrupt:
         print(f"Uploading {filename} to server...")
         with open(filename, 'rb') as f:
             files = {'flight_file': (os.path.basename(filename), f, 'application/gzip')}
-            headers = {'Accept': 'application/json'}
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {TOKEN}'
+            }
             response = requests.post(API_URL, files=files, headers=headers)
 
         if response.status_code == 201:
             print("Upload successful!")
             os.remove(filename)
             print(f"Deleted local file: {filename}")
+        elif response.status_code == 401:
+            print("Upload failed: Unauthorized. Your API key might be invalid or expired.")
+            print("Run the script with --logout to clear it and provide a new one.")
         else:
             print(f"Upload failed with status code {response.status_code}.")
             print(response.text)

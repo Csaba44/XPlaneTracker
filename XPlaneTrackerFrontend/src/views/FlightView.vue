@@ -13,6 +13,7 @@ const flights = ref([]);
 const map = ref(null);
 const pathLayers = ref([]);
 const selectedFlightId = ref(null);
+const generatedApiKey = ref(null);
 
 const altitudeTiers = [
   { alt: 0, label: "0 - 1k", color: "#ef4444" },
@@ -142,6 +143,15 @@ const handleLogout = async () => {
   }
 };
 
+const generateApiKey = async () => {
+  try {
+    const response = await api.post("/api/tokens/create");
+    generatedApiKey.value = response.data.token;
+  } catch (error) {
+    console.error(error);
+  }
+};
+
 onMounted(async () => {
   if (!authStore.user) {
     await authStore.fetchUser();
@@ -163,16 +173,25 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="flex items-center justify-between bg-flight-card border border-flight-border p-3 rounded-lg">
-          <div class="flex flex-col">
-            <span class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Szia testvér!</span>
-            <span class="text-xs text-white font-bold truncate max-w-[120px]">
-              {{ authStore.user?.email || "Pilot" }}
-            </span>
+        <div class="flex flex-col space-y-2 mb-4">
+          <div class="flex items-center justify-between bg-flight-card border border-flight-border p-3 rounded-lg">
+            <div class="flex flex-col">
+              <span class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Szia testvér!</span>
+              <span class="text-xs text-white font-bold truncate max-w-[120px]">
+                {{ authStore.user?.email || "Pilot" }}
+              </span>
+            </div>
+            <button @click="handleLogout" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Logout">
+              <i class="fa-solid fa-right-from-bracket text-xs"></i>
+            </button>
           </div>
-          <button @click="handleLogout" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Logout">
-            <i class="fa-solid fa-right-from-bracket text-xs"></i>
-          </button>
+
+          <button @click="generateApiKey" class="w-full bg-flight-accent/10 hover:bg-flight-accent text-flight-accent hover:text-white border border-flight-accent transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">Generate API Key</button>
+
+          <div v-if="generatedApiKey" class="bg-black/50 p-3 rounded-lg border border-flight-border mt-2">
+            <p class="text-[10px] text-red-400 font-bold uppercase mb-1">Vigyázz rá testvérem, el ne lopják a cigányok!</p>
+            <code class="text-[10px] text-flight-accent break-all select-all">{{ generatedApiKey }}</code>
+          </div>
         </div>
       </div>
 
