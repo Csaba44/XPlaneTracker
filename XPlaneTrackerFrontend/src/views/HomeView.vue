@@ -17,7 +17,7 @@
       <div class="mt-16 bg-flight-sidebar border border-flight-border p-8 rounded-2xl shadow-2xl text-left max-w-xl mx-auto">
         <div class="flex items-center space-x-3 mb-6">
           <i class="fa-solid fa-hand-holding-heart text-flight-accent text-xl"></i>
-          <h2 class="text-white font-bold uppercase tracking-wider">Ha tiszteled itt tudsz penzt kuldeni</h2>
+          <h2 class="text-white font-bold uppercase tracking-wider">Ha tiszteled, itt tudsz pénzt küldeni (szeretem a pénzt)</h2>
         </div>
 
         <div class="space-y-4 font-mono text-xs md:text-sm">
