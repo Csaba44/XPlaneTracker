@@ -289,7 +289,7 @@ const fetchAndDrawRunways = async (lat, lon) => {
   if (pendingRequests.has(key)) return;
   pendingRequests.add(key);
   try {
-    const response = await fetch(`/api/runways?lat=${lat}&lon=${lon}`);
+    const response = await api.get(`/api/runways?lat=${lat}&lon=${lon}`);
     const data = await response.json();
     if (data.elements) {
       runwayCache.set(key, data.elements);
