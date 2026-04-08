@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, computed } from "vue";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import api from "../config/api";
 
 // ECharts importok a grafikonhoz
 import { use } from "echarts/core";
