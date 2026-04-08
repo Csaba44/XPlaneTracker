@@ -3,6 +3,7 @@ import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "../stores/auth";
 import api from "../config/api";
+import { toast } from "vue-sonner";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -159,6 +160,39 @@ onMounted(async () => {
   await fetchFlights();
   initMap();
 });
+
+const shareFlight = async (id) => {
+  const url = `${window.location.origin}/flight/${id}`;
+
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("Vágólapra másolva.");
+    } catch (err) {
+      prompt("Copy this link to share:", url);
+    }
+  } else {
+    const textArea = document.createElement("textarea");
+    textArea.value = url;
+
+    textArea.style.position = "fixed";
+    textArea.style.left = "-999999px";
+    textArea.style.top = "-999999px";
+
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+      document.execCommand("copy");
+      alert("Link copied! Send it to your friends.");
+    } catch (err) {
+      prompt("Copy this link to share:", url);
+    } finally {
+      textArea.remove();
+    }
+  }
+};
 </script>
 
 <template>
@@ -214,7 +248,13 @@ onMounted(async () => {
               <span class="text-slate-400 font-medium">{{ flight.airline }}</span>
               <span class="text-[10px]">{{ new Date(flight.start_time).toLocaleDateString() }}</span>
             </div>
-            <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors"></i>
+
+            <div class="flex items-center space-x-3">
+              <button v-if="selectedFlightId === flight.id" @click.stop="shareFlight(flight.id)" class="text-flight-accent hover:text-white transition-colors bg-flight-accent/10 hover:bg-flight-accent p-1.5 rounded-md" title="Share Flight">
+                <i class="fa-solid fa-share-nodes"></i>
+              </button>
+              <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors"></i>
+            </div>
           </div>
         </div>
       </div>

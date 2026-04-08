@@ -14,6 +14,9 @@ parser.add_argument("--logout", action="store_true")
 args = parser.parse_args()
 
 TOKEN_FILE = ".xtracker_token"
+API_BASE_URL = "http://xtracker.local:5173/api"
+API_FLIGHTS_URL = f"{API_BASE_URL}/flights"
+API_USER_URL = f"{API_BASE_URL}/user"
 
 if args.logout:
     if os.path.exists(TOKEN_FILE):
@@ -45,11 +48,32 @@ else:
         f.write(TOKEN)
     print("API Key saved securely.\n")
 
+print("Verifying authentication...")
+try:
+    auth_headers = {
+        'Accept': 'application/json',
+        'Authorization': f'Bearer {TOKEN}'
+    }
+    user_response = requests.get(API_USER_URL, headers=auth_headers)
+    
+    if user_response.status_code == 200:
+        user_data = user_response.json()
+        email = user_data.get('email', 'Pilot')
+        print(f"Szia testvér, {email}!\n")
+    else:
+        print("Invalid or expired API Key.")
+        if os.path.exists(TOKEN_FILE):
+            os.remove(TOKEN_FILE)
+        print("Logged out automatically. Please run the script again to provide a new API key.")
+        exit(1)
+except requests.exceptions.RequestException as e:
+    print(f"Failed to connect to the server for authentication: {e}")
+    exit(1)
+
 HOST_IP = args.host
-API_URL = f"http://xtracker.local:5173/api/flights"
 
 print(f"XPlane IP: {HOST_IP}")
-print(f"API: {API_URL}")
+print(f"API: {API_FLIGHTS_URL}")
 
 callsign = input("Enter callsign (optional): ").strip() or "unknown"
 flight_number = input("Enter flight number (optional): ").strip() or "unknown"
@@ -184,11 +208,7 @@ except KeyboardInterrupt:
         print(f"Uploading {filename} to server...")
         with open(filename, 'rb') as f:
             files = {'flight_file': (os.path.basename(filename), f, 'application/gzip')}
-            headers = {
-                'Accept': 'application/json',
-                'Authorization': f'Bearer {TOKEN}'
-            }
-            response = requests.post(API_URL, files=files, headers=headers)
+            response = requests.post(API_FLIGHTS_URL, files=files, headers=auth_headers)
 
         if response.status_code == 201:
             print("Upload successful!")

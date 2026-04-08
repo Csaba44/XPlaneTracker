@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import HomeView from '../views/HomeView.vue';
 import LoginView from '../views/LoginView.vue';
 import FlightView from '../views/FlightView.vue';
+import SharedFlightView from '../views/SharedFlightView.vue';
 import { useAuthStore } from '../stores/auth';
 
 const routes = [
@@ -20,6 +21,11 @@ const routes = [
     name: 'flights',
     component: FlightView,
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/flight/:id',
+    name: 'shared-flight',
+    component: SharedFlightView
   }
 ];
 
@@ -38,11 +44,9 @@ router.beforeEach(async (to, from, next) => {
     } catch (e) {
       next('/login');
     }
-  }
-  else if (to.name === 'login' && authStore.isAuthenticated) {
+  } else if (to.name === 'login' && authStore.isAuthenticated) {
     next('/flights');
-  }
-  else {
+  } else {
     next();
   }
 });
