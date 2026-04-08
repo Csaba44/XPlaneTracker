@@ -11,10 +11,16 @@ from XPlaneConnectX import XPlaneConnectX
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--logout", action="store_true")
+parser.add_argument("--dev", action="store_true")
 args = parser.parse_args()
 
 TOKEN_FILE = ".xtracker_token"
-API_BASE_URL = "https://api.vacchunesports.online/api"
+
+if args.dev:
+    API_BASE_URL = "http://xtracker.local:5173/api"
+else:
+    API_BASE_URL = "https://api.vacchunesports.online/api"
+
 API_FLIGHTS_URL = f"{API_BASE_URL}/flights"
 API_USER_URL = f"{API_BASE_URL}/user"
 
@@ -27,6 +33,7 @@ if args.logout:
     exit(0)
 
 print(f"--- CSABOLANTA ---")
+print(f"Mode: {'DEVELOPMENT' if args.dev else 'PRODUCTION'}")
 
 if os.path.exists(TOKEN_FILE):
     with open(TOKEN_FILE, "r") as f:
@@ -200,7 +207,7 @@ except KeyboardInterrupt:
     
     with gzip.open(filename, "wt", encoding="utf-8") as outfile:
         json.dump(flight_path_data, outfile, separators=(',', ':'))
-        
+    
     print(f"\nData saved to {filename}")
 
     try:
