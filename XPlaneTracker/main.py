@@ -35,8 +35,7 @@ else:
     print("Authentication required.")
     print("To get your API key:")
     print("1. Log in to the X-Tracker web dashboard.")
-    print("2. Open the Flights view.")
-    print("3. Click 'Generate API Key' in the left sidebar.")
+    print("2. Click 'Generate API Key' in the left sidebar.")
     
     TOKEN = input("\nPaste your API Key here: ").strip()
     
@@ -59,7 +58,7 @@ try:
     if user_response.status_code == 200:
         user_data = user_response.json()
         email = user_data.get('email', 'Pilot')
-        print(f"Szia testvér, {email}!\n")
+        print(f"Hallo, {email}!\n")
     else:
         print("Invalid or expired API Key.")
         if os.path.exists(TOKEN_FILE):

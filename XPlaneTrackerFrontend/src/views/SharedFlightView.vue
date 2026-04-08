@@ -125,13 +125,13 @@ onMounted(() => {
   <div class="flex h-screen w-screen bg-flight-bg text-slate-300 overflow-hidden font-sans">
     <div v-if="isLoading" class="absolute inset-0 z-[2000] bg-flight-bg flex flex-col items-center justify-center">
       <i class="fa-solid fa-spinner fa-spin text-4xl text-flight-accent mb-4"></i>
-      <p class="text-slate-400 uppercase tracking-widest font-bold text-sm">Loading Flight Data...</p>
+      <p class="text-slate-400 uppercase tracking-widest font-bold text-sm">Betöltés...</p>
     </div>
 
     <div v-if="isError" class="absolute inset-0 z-[2000] bg-flight-bg flex flex-col items-center justify-center">
       <i class="fa-solid fa-triangle-exclamation text-5xl text-red-500 mb-4"></i>
-      <p class="text-white font-bold text-xl mb-2">Flight Not Found</p>
-      <p class="text-slate-500 mb-6 text-sm">This flight log might have been deleted or doesn't exist.</p>
+      <p class="text-white font-bold text-xl mb-2">Nincs találat.</p>
+      <p class="text-slate-500 mb-6 text-sm">Lehet kitörölte valaki, vagy sose létezett?</p>
       <router-link to="/" class="bg-flight-accent hover:bg-sky-400 text-flight-bg font-black px-6 py-3 rounded-xl transition-all uppercase tracking-widest text-xs"> Go Home </router-link>
     </div>
 
@@ -141,7 +141,7 @@ onMounted(() => {
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
             <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">X-TRACKER</h1>
-            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">Shared Flight</p>
+            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">Az egyik testvér által megosztva</p>
           </div>
         </div>
       </div>
@@ -161,7 +161,7 @@ onMounted(() => {
             <p class="text-md text-slate-300">{{ flightData.airline }}</p>
           </div>
           <div>
-            <p class="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1">Date Recorded</p>
+            <p class="text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-1">Date</p>
             <p class="text-sm text-slate-400">{{ new Date(flightData.start_time).toLocaleString() }}</p>
           </div>
         </div>
@@ -178,7 +178,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <router-link to="/" class="w-full text-center bg-flight-card hover:bg-flight-accent border border-flight-border hover:border-flight-accent text-slate-300 hover:text-white transition-all p-3 rounded-xl text-xs font-bold uppercase tracking-wider block"> Get Your Own Tracker </router-link>
+        <router-link to="/" class="w-full text-center bg-flight-card hover:bg-flight-accent border border-flight-border hover:border-flight-accent text-slate-300 hover:text-white transition-all p-3 rounded-xl text-xs font-bold uppercase tracking-wider block"> Főoldal </router-link>
       </div>
     </aside>
 

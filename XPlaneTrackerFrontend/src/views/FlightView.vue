@@ -184,7 +184,7 @@ const shareFlight = async (id) => {
       await navigator.clipboard.writeText(url);
       toast.success("Vágólapra másolva.");
     } catch (err) {
-      prompt("Copy this link to share:", url);
+      prompt("Másold ki:", url);
     }
   } else {
     const textArea = document.createElement("textarea");
@@ -202,7 +202,7 @@ const shareFlight = async (id) => {
       document.execCommand("copy");
       toast.success("Vágólapra másolva.");
     } catch (err) {
-      prompt("Copy this link to share:", url);
+      prompt("Másold ki:", url);
     } finally {
       textArea.remove();
     }
@@ -282,13 +282,13 @@ onMounted(async () => {
       <div class="flex-grow overflow-y-auto px-4 pb-4 space-y-3">
         <div v-if="flights.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center">
           <i class="fa-solid fa-satellite-dish text-2xl mb-3 opacity-50"></i>
-          <p class="text-sm italic">Searching for flight logs...</p>
+          <p class="text-sm italic">Keresem tesó, várj egy picit...</p>
         </div>
 
         <div v-else-if="filteredFlights.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center bg-flight-card/50 rounded-xl border border-flight-border border-dashed">
           <i class="fa-solid fa-plane-slash text-2xl mb-3 opacity-50 text-flight-accent"></i>
-          <p class="text-sm font-bold text-slate-400">No flights found</p>
-          <p class="text-[10px] uppercase tracking-widest mt-1">Adjust your filters</p>
+          <p class="text-sm font-bold text-slate-400">Nincs itt semmi.</p>
+          <p class="text-[10px] uppercase tracking-widest mt-1">Nem találtam ilyet muro phral</p>
         </div>
 
         <div v-for="flight in filteredFlights" :key="flight.id" @click="viewFlight(flight.id)" :class="['p-5 rounded-xl cursor-pointer transition-all duration-300 border group', selectedFlightId === flight.id ? 'bg-flight-card border-flight-accent shadow-[0_0_20px_rgba(56,189,248,0.1)]' : 'bg-transparent border-transparent hover:bg-flight-card-hover']">
