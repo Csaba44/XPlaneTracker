@@ -40,6 +40,8 @@ def header():
         )
     )
 
+# --- UI Helper Functions (RESTORED INFO) ---
+def info(msg): console.print(f"[bold cyan]ℹ[/bold cyan] {msg}")
 def ok(msg): console.print(f"[bold green]✔[/bold green] {msg}")
 def warn(msg): console.print(f"[bold yellow]⚠[/bold yellow] {msg}")
 def err(msg): console.print(f"[bold red]✖[/bold red] {msg}")
@@ -58,7 +60,6 @@ def build_landings_panel(landings):
     if not landings:
         content = "[dim]Waiting for touchdown...[/dim]"
     else:
-        # Display last 2 landings
         lines = []
         for l in landings[-2:]:
             lines.append(f"• [bold green]{l['fpm']:.0f} FPM[/bold green] ({l['g_force']:.2f}G)")
@@ -124,7 +125,6 @@ if args.logout:
         warn("Not logged in.")
     exit(0)
 
-# Load/Verify Token
 if os.path.exists(TOKEN_FILE):
     with open(TOKEN_FILE, "r") as f: TOKEN = f.read().strip()
     ok("Saved API Key loaded.")
@@ -158,6 +158,10 @@ flight_no = Prompt.ask("[bold magenta]Flight Number[/bold magenta]", default="un
 airline = Prompt.ask("[bold magenta]Airline[/bold magenta]", default="unknown")
 reg = Prompt.ask("[bold magenta]Registration[/bold magenta]", default="unknown")
 
+timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+base_filename = f"flights/flight_{callsign}_{timestamp_str}"
+os.makedirs("flights", exist_ok=True)
+
 flight_path_data = {
     "metadata": {
         "callsign": callsign, "flight_number": flight_no, "airline": airline, 
@@ -167,6 +171,10 @@ flight_path_data = {
     },
     "path": [], "landings": []
 }
+
+def save_flight_to_disk(target_path, data):
+    with gzip.open(target_path, "wt", encoding="utf-8") as f:
+        json.dump(data, f, separators=(',', ':'))
 
 def landing_monitor():
     global current_telemetry
@@ -195,6 +203,7 @@ threading.Thread(target=landing_monitor, daemon=True).start()
 # --- Main Tracking Loop ---
 last_lat, last_lon, last_alt, last_speed = None, None, None, None
 last_log_time = 0
+last_autosave_time = time.time()
 layout = build_layout()
 
 try:
@@ -210,8 +219,13 @@ try:
             lat, lon, alt, speed = data.get("lat"), data.get("lon"), data.get("alt"), data.get("gs")
             now = time.time()
 
+            if now - last_autosave_time > 2:
+                autosave_path = f"{base_filename}_autosaved.json.gz"
+                save_flight_to_disk(autosave_path, flight_path_data)
+                log("[bold blue]AUTOSAVE[/bold blue] Data synced to disk.")
+                last_autosave_time = now
+
             if lat is not None and lon is not None:
-                # Log on movement, speed change, or 2s heartbeat
                 if (lat != last_lat or lon != last_lon or alt != last_alt or 
                     speed != last_speed or (now - last_log_time) > 2.0):
                     
@@ -228,28 +242,29 @@ try:
             time.sleep(0.1)
 
 except KeyboardInterrupt:
-    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"flights/flight_{callsign}_{timestamp_str}.json.gz"
-    os.makedirs("flights", exist_ok=True)
+    final_filename = f"{base_filename}.json.gz"
+    autosave_filename = f"{base_filename}_autosaved.json.gz"
     
-    with gzip.open(filename, "wt", encoding="utf-8") as f:
-        json.dump(flight_path_data, f, separators=(',', ':'))
-    ok(f"Saved locally to {filename}")
+    save_flight_to_disk(final_filename, flight_path_data)
+    ok(f"Final data saved to [bold]{final_filename}[/bold]")
+    
+    if os.path.exists(autosave_filename):
+        os.remove(autosave_filename)
+        info("Cleanup: Autosave file removed.") # Fixed: 'info' is now defined
     
     try:
         with console.status("[bold cyan]Uploading flight...[/bold cyan]"):
-            with open(filename, 'rb') as f:
-                files = {'flight_file': (os.path.basename(filename), f, 'application/gzip')}
+            with open(final_filename, 'rb') as f:
+                files = {'flight_file': (os.path.basename(final_filename), f, 'application/gzip')}
                 response = requests.post(API_FLIGHTS_URL, files=files, headers=auth_headers)
 
         if response.status_code == 201:
             ok("Upload successful!")
             if Prompt.ask("\n[bold yellow]Delete local file?[/bold yellow]", choices=["y", "n"], default="y") == 'y':
-                os.remove(filename)
+                os.remove(final_filename)
                 ok("Local file deleted.")
         else:
             err(f"Upload failed: {response.status_code}")
-            console.print(response.text)
     except Exception as e:
         err(f"Upload error: {e}")
     
