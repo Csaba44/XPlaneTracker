@@ -22,6 +22,7 @@ const generatedApiKey = ref(null);
 
 const searchQuery = ref("");
 const selectedAirline = ref("");
+const selectedRegistration = ref("");
 
 const isProfileModalOpen = ref(false);
 const isEditFlightModalOpen = ref(false);
@@ -33,17 +34,25 @@ const availableAirlines = computed(() => {
   return [...new Set(airlines)].sort();
 });
 
+const availableRegistrations = computed(() => {
+  const registrations = flights.value.map((f) => f.aircraft_registration).filter(Boolean);
+  return [...new Set(registrations)].sort();
+});
+
 const filteredFlights = computed(() => {
   return flights.value.filter((flight) => {
     const matchesSearch = !searchQuery.value || flight.callsign.toLowerCase().includes(searchQuery.value.toLowerCase()) || flight.flight_number.toLowerCase().includes(searchQuery.value.toLowerCase()) || flight.airline.toLowerCase().includes(searchQuery.value.toLowerCase());
     const matchesAirline = !selectedAirline.value || flight.airline === selectedAirline.value;
-    return matchesSearch && matchesAirline;
+    const matchesRegistration = !selectedRegistration.value || flight.aircraft_registration === selectedRegistration.value;
+
+    return matchesSearch && matchesAirline && matchesRegistration;
   });
 });
 
 const clearFilters = () => {
   searchQuery.value = "";
   selectedAirline.value = "";
+  selectedRegistration.value = "";
 };
 
 const fetchFlights = async () => {
@@ -215,7 +224,7 @@ onMounted(async () => {
       </div>
 
       <div class="px-4 pb-4">
-        <FlightFilters v-model:searchQuery="searchQuery" v-model:selectedAirline="selectedAirline" :availableAirlines="availableAirlines" :filteredCount="filteredFlights.length" :totalCount="flights.length" @clear="clearFilters" />
+        <FlightFilters v-model:searchQuery="searchQuery" v-model:selectedAirline="selectedAirline" v-model:selectedRegistration="selectedRegistration" :availableAirlines="availableAirlines" :availableRegistrations="availableRegistrations" :filteredCount="filteredFlights.length" :totalCount="flights.length" @clear="clearFilters" />
       </div>
 
       <div class="flex-grow overflow-y-auto px-4 pb-4 space-y-3">

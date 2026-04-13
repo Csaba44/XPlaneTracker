@@ -91,6 +91,7 @@ class FlightController extends Controller
             'callsign' => $data['metadata']['callsign'] ?? 'unknown',
             'flight_number' => $data['metadata']['flight_number'] ?? 'unknown',
             'airline' => $data['metadata']['airline'] ?? 'unknown',
+            'aircraft_registration' => $data['metadata']['aircraft_registration'] ?? null,
             'dep_icao' => $dep_icao,
             'arr_icao' => $arr_icao,
             'start_time' => $data['metadata']['start_time'] ?? null,
@@ -126,6 +127,7 @@ class FlightController extends Controller
             'callsign' => 'nullable|string|max:255',
             'flight_number' => 'nullable|string|max:255',
             'airline' => 'nullable|string|max:255',
+            'aircraft_registration' => 'nullable|string|max:255',
             'dep_icao' => 'nullable|alpha_num|max:10',
             'arr_icao' => 'nullable|alpha_num|max:10',
             'start_time' => 'nullable|date'

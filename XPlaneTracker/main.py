@@ -177,6 +177,7 @@ console.print(
 callsign = Prompt.ask("[bold magenta]Enter callsign[/bold magenta]", default="unknown").strip() or "unknown"
 flight_number = Prompt.ask("[bold magenta]Enter flight number[/bold magenta]", default="unknown").strip() or "unknown"
 airline = Prompt.ask("[bold magenta]Enter airline[/bold magenta]", default="unknown").strip() or "unknown"
+aircraft_registration = Prompt.ask("[bold magenta]Enter aircraft registration[/bold magenta]", default="unknown").strip() or "unknown"
 
 os.makedirs("flights", exist_ok=True)
 
@@ -201,6 +202,7 @@ flight_path_data = {
         "callsign": callsign,
         "flight_number": flight_number,
         "airline": airline,
+        "aircraft_registration": aircraft_registration,
         "start_time": datetime.now().isoformat(),
         "columns": ["timestamp", "lat", "lon", "alt", "speed"]
     },
