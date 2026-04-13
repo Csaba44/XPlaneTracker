@@ -114,6 +114,14 @@ def simulator_selector():
 
 def send_landing_webhook():
     global landing_buffer, buffer_timer
+
+    # Added check for --no-webhook flag
+    if args.no_webhook:
+        with buffer_lock:
+            landing_buffer = []
+            buffer_timer = None
+        return
+
     webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
     if not webhook_url or not landing_buffer:
         return
@@ -132,7 +140,7 @@ def send_landing_webhook():
             "embeds": [{
                 "title": title,
                 "description": "\n".join(description_lines),
-                "color": 0x38bdf8, 
+                "color": 0x38bdf8,
                 "fields": [
                     {"name": "Callsign", "value": metadata.get("callsign", "N/A"), "inline": True},
                     {"name": "Flight Number", "value": metadata.get("flight_number", "N/A"), "inline": True},
@@ -159,6 +167,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--logout", action="store_true")
 parser.add_argument("--dev", action="store_true")
+# Added --no-webhook flag
+parser.add_argument("--no-webhook", action="store_true", help="Disable Discord webhook notifications")
 args = parser.parse_args()
 
 TOKEN_FILE = ".xtracker_token"
@@ -216,7 +226,7 @@ os.makedirs("flights", exist_ok=True)
 
 flight_path_data = {
     "metadata": {
-        "callsign": callsign, "flight_number": flight_no, "airline": airline, 
+        "callsign": callsign, "flight_number": flight_no, "airline": airline,
         "aircraft_registration": reg, "simulator": sim_choice,
         "start_time": datetime.now().isoformat(),
         "columns": ["timestamp", "lat", "lon", "alt", "speed"]
@@ -252,7 +262,6 @@ def landing_monitor():
                     "lat": round(data.get('lat', 0), 5), "lon": round(data.get('lon', 0), 5)
                 })
 
-                # Webhook Buffering
                 with buffer_lock:
                     landing_buffer.append({'fpm': touchdown_fpm, 'g': g_force})
                     if buffer_timer is None:
@@ -290,7 +299,7 @@ try:
                 last_autosave_time = now
 
             if lat is not None and lon is not None:
-                if (lat != last_lat or lon != last_lon or alt != last_alt or 
+                if (lat != last_lat or lon != last_lon or alt != last_alt or
                     speed != last_speed or (now - last_log_time) > 2.0):
                     
                     formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
