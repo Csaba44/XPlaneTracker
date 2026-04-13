@@ -6,6 +6,7 @@ import threading
 import requests
 import argparse
 from datetime import datetime
+from dotenv import load_dotenv
 
 from rich.console import Console
 from rich.panel import Panel
@@ -18,11 +19,20 @@ from rich.layout import Layout
 from xp_provider import XPlaneProvider
 from msfs_provider import MSFSProvider
 
+# Load environment variables
+load_dotenv()
+
 console = Console()
 
-# Global state for thread-safe telemetry
+# Global state
 current_telemetry = {"lat": None, "on_ground": None}
 log_lines = []
+user_name = "Pilot"
+
+# Webhook Buffer Logic
+landing_buffer = []
+buffer_lock = threading.Lock()
+buffer_timer = None
 
 def log(msg):
     log_lines.append(msg)
@@ -40,7 +50,6 @@ def header():
         )
     )
 
-# --- UI Helper Functions (RESTORED INFO) ---
 def info(msg): console.print(f"[bold cyan]ℹ[/bold cyan] {msg}")
 def ok(msg): console.print(f"[bold green]✔[/bold green] {msg}")
 def warn(msg): console.print(f"[bold yellow]⚠[/bold yellow] {msg}")
@@ -103,6 +112,48 @@ def simulator_selector():
     choice = Prompt.ask("Choose simulator", choices=["1", "2"], default="1")
     return "X-Plane" if choice == "1" else "MSFS 2024"
 
+def send_landing_webhook():
+    global landing_buffer, buffer_timer
+    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+    if not webhook_url or not landing_buffer:
+        return
+
+    metadata = flight_path_data.get("metadata", {})
+
+    with buffer_lock:
+        title = f"{user_name} Muro phral megérkezett, shavale!"
+        
+        description_lines = []
+        for i, l in enumerate(landing_buffer):
+            prefix = "" if i == 0 else "Bounce: "
+            description_lines.append(f"**{prefix}{l['fpm']:.0f} fpm** | **{l['g']:.2f} g**")
+        
+        payload = {
+            "embeds": [{
+                "title": title,
+                "description": "\n".join(description_lines),
+                "color": 0x38bdf8, 
+                "fields": [
+                    {"name": "Callsign", "value": metadata.get("callsign", "N/A"), "inline": True},
+                    {"name": "Flight Number", "value": metadata.get("flight_number", "N/A"), "inline": True},
+                    {"name": "Registration", "value": metadata.get("aircraft_registration", "N/A"), "inline": True},
+                    {"name": "Simulator", "value": metadata.get("simulator", "N/A"), "inline": True},
+                ],
+                "footer": {
+                    "text": "csabolanta.hu"
+                },
+                "timestamp": datetime.utcnow().isoformat()
+            }]
+        }
+
+        try:
+            requests.post(webhook_url, json=payload, timeout=5)
+        except Exception as e:
+            log(f"[bold red]Webhook Error:[/bold red] {e}")
+
+        landing_buffer = []
+        buffer_timer = None
+
 # --- App Logic ---
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
@@ -137,7 +188,8 @@ try:
     with console.status("[bold cyan]Verifying Auth...[/bold cyan]"):
         user_res = requests.get(API_USER_URL, headers=auth_headers)
     if user_res.status_code == 200:
-        ok(f"Authenticated as [bold]{user_res.json().get('name')}[/bold]")
+        user_name = user_res.json().get('name', 'Pilot')
+        ok(f"Authenticated as [bold]{user_name}[/bold]")
     else:
         err("Invalid API Key."); os.remove(TOKEN_FILE); exit(1)
 except Exception as e:
@@ -177,7 +229,7 @@ def save_flight_to_disk(target_path, data):
         json.dump(data, f, separators=(',', ':'))
 
 def landing_monitor():
-    global current_telemetry
+    global current_telemetry, landing_buffer, buffer_timer
     was_on_ground = True
     fpm_buffer = []
     while True:
@@ -189,12 +241,24 @@ def landing_monitor():
             if len(fpm_buffer) > 20: fpm_buffer.pop(0)
             if not was_on_ground and on_ground:
                 touchdown_fpm = min(fpm_buffer) if fpm_buffer else 0
+                g_force = data.get('gforce', 0)
+                
                 log(f"[bold green]LANDING[/bold green] {touchdown_fpm:.0f} FPM")
+                
+                # Add to internal data
                 flight_path_data["landings"].append({
                     "timestamp": round(time.time(), 2), "fpm": round(touchdown_fpm, 2),
-                    "g_force": round(data.get('gforce', 0), 2),
+                    "g_force": round(g_force, 2),
                     "lat": round(data.get('lat', 0), 5), "lon": round(data.get('lon', 0), 5)
                 })
+
+                # Webhook Buffering
+                with buffer_lock:
+                    landing_buffer.append({'fpm': touchdown_fpm, 'g': g_force})
+                    if buffer_timer is None:
+                        buffer_timer = threading.Timer(10.0, send_landing_webhook)
+                        buffer_timer.start()
+
             was_on_ground = on_ground
         time.sleep(0.1)
 
@@ -219,7 +283,7 @@ try:
             lat, lon, alt, speed = data.get("lat"), data.get("lon"), data.get("alt"), data.get("gs")
             now = time.time()
 
-            if now - last_autosave_time > 2:
+            if now - last_autosave_time > 120:
                 autosave_path = f"{base_filename}_autosaved.json.gz"
                 save_flight_to_disk(autosave_path, flight_path_data)
                 log("[bold blue]AUTOSAVE[/bold blue] Data synced to disk.")
@@ -250,7 +314,7 @@ except KeyboardInterrupt:
     
     if os.path.exists(autosave_filename):
         os.remove(autosave_filename)
-        info("Cleanup: Autosave file removed.") # Fixed: 'info' is now defined
+        info("Cleanup: Autosave file removed.")
     
     try:
         with console.status("[bold cyan]Uploading flight...[/bold cyan]"):

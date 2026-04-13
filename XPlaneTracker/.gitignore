@@ -2,3 +2,4 @@ __pycache__
 flights
 .xtracker_token
 .venv
+.env

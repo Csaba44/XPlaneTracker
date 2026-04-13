@@ -19,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pyinstaller rich SimConnect
+          pip install requests pyinstaller rich SimConnect python-dotenv
 
       - name: Build EXE
         working-directory: ./XPlaneTracker
