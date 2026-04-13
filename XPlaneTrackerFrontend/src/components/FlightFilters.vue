@@ -52,17 +52,17 @@ const localFriend = computed({
 
     <div class="flex space-x-2">
       <select v-if="showFriendFilter" v-model="localFriend" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-        <option value="">Pilóta: Összes</option>
+        <option value="">Sel. Pilot</option>
         <option v-for="friend in availableFriends" :key="friend.id" :value="friend.id">{{ friend.name }}</option>
       </select>
 
       <select v-model="localAirline" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-        <option value="">Légitársaság: Összes</option>
+        <option value="">Sel. airline</option>
         <option v-for="airline in availableAirlines" :key="airline" :value="airline">{{ airline }}</option>
       </select>
 
       <select v-model="localRegistration" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-        <option value="">Lajstrom: Összes</option>
+        <option value="">Sel. Reg</option>
         <option v-for="reg in availableRegistrations" :key="reg" :value="reg">{{ reg }}</option>
       </select>
 
