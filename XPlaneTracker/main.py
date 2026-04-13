@@ -6,7 +6,6 @@ import threading
 import requests
 import argparse
 from datetime import datetime
-from XPlaneConnectX import XPlaneConnectX
 
 from rich.console import Console
 from rich.panel import Panel
@@ -16,7 +15,12 @@ from rich.prompt import Prompt
 from rich.live import Live
 from rich.layout import Layout
 
+from xp_provider import XPlaneProvider
+from msfs_provider import MSFSProvider
+
 console = Console()
+
+current_telemetry = {"lat": None, "on_ground": None}
 
 log_lines = []
 
@@ -27,7 +31,7 @@ def log(msg):
 
 def header():
     title = Text("CSABOLANTA", style="bold magenta")
-    subtitle = Text("X-Plane Flight Tracker", style="dim")
+    subtitle = Text("X-Plane & MSFS Flight Tracker", style="dim")
     console.print(
         Panel.fit(
             Text.assemble(title, "\n", subtitle),
@@ -77,6 +81,21 @@ def build_log_panel():
         border_style="cyan",
         box=box.ROUNDED
     )
+
+def simulator_selector():
+    console.print(Panel(
+        "[bold cyan]1.[/bold cyan] X-Plane\n"
+        "[bold cyan]2.[/bold cyan] MSFS 2024",
+        title="[bold magenta]Simulator Selection[/bold magenta]",
+        border_style="magenta",
+        box=box.ROUNDED
+    ))
+    
+    choice = Prompt.ask("Choose simulator", choices=["1", "2"], default="1")
+    
+    if choice == "1":
+        return "X-Plane"
+    return "MSFS 2024"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
@@ -156,46 +175,31 @@ try:
         err("Invalid or expired API Key.")
         if os.path.exists(TOKEN_FILE):
             os.remove(TOKEN_FILE)
-        warn("Logged out automatically. Please run the script again to provide a new API key.")
         exit(1)
 
 except requests.exceptions.RequestException as e:
-    err(f"Failed to connect to the server for authentication: {e}")
+    err(f"Failed to connect to the server: {e}")
     exit(1)
 
-HOST_IP = args.host
+sim_choice = simulator_selector()
 
-console.print(
-    Panel(
-        f"[bold]X-Plane IP:[/bold] [cyan]{HOST_IP}[/cyan]\n"
-        f"[bold]API Endpoint:[/bold] [green]{API_FLIGHTS_URL}[/green]",
-        border_style="blue",
-        box=box.ROUNDED
-    )
-)
+if sim_choice == "X-Plane":
+    provider = XPlaneProvider(ip=args.host)
+else:
+    provider = MSFSProvider()
+
+step(f"Connecting to {sim_choice}...")
+try:
+    provider.connect()
+    ok(f"Connected to {sim_choice} successfully.")
+except Exception as e:
+    err(f"Could not connect to {sim_choice}: {e}")
+    exit(1)
 
 callsign = Prompt.ask("[bold magenta]Enter callsign[/bold magenta]", default="unknown").strip() or "unknown"
 flight_number = Prompt.ask("[bold magenta]Enter flight number[/bold magenta]", default="unknown").strip() or "unknown"
 airline = Prompt.ask("[bold magenta]Enter airline[/bold magenta]", default="unknown").strip() or "unknown"
 aircraft_registration = Prompt.ask("[bold magenta]Enter aircraft registration[/bold magenta]", default="unknown").strip() or "unknown"
-
-os.makedirs("flights", exist_ok=True)
-
-xpc = XPlaneConnectX(ip=HOST_IP)
-
-drefs_to_subscribe = [
-    ("sim/flightmodel/position/latitude", 50),
-    ("sim/flightmodel/position/longitude", 50),
-    ("sim/flightmodel/position/elevation", 50),
-    ("sim/flightmodel/failures/onground_any", 50),
-    ("sim/flightmodel/position/vh_ind_fpm", 50),
-    ("sim/flightmodel2/misc/gforce_normal", 50),
-    ("sim/flightmodel/position/groundspeed", 50)
-]
-
-step("Subscribing to X-Plane DataRefs...")
-xpc.subscribeDREFs(drefs_to_subscribe)
-ok("Subscribed successfully.")
 
 flight_path_data = {
     "metadata": {
@@ -203,6 +207,7 @@ flight_path_data = {
         "flight_number": flight_number,
         "airline": airline,
         "aircraft_registration": aircraft_registration,
+        "simulator": sim_choice,
         "start_time": datetime.now().isoformat(),
         "columns": ["timestamp", "lat", "lon", "alt", "speed"]
     },
@@ -211,75 +216,48 @@ flight_path_data = {
 }
 
 def landing_monitor():
+    global current_telemetry
     was_on_ground = True
     fpm_buffer = []
     
-    time.sleep(2)
-    
     while True:
-        onground_data = xpc.current_dref_values.get("sim/flightmodel/failures/onground_any", {})
-        fpm_data = xpc.current_dref_values.get("sim/flightmodel/position/vh_ind_fpm", {})
-        gforce_data = xpc.current_dref_values.get("sim/flightmodel2/misc/gforce_normal", {})
+        data = current_telemetry # Use shared data
         
-        onground_val = onground_data.get("value")
-        fpm_val = fpm_data.get("value")
-        gforce_val = gforce_data.get("value")
+        on_ground = data.get("on_ground")
+        fpm = data.get("fpm")
         
-        if onground_val is not None and fpm_val is not None and gforce_val is not None:
-            is_on_ground = bool(onground_val == 1.0)
-            
-            fpm_buffer.append(fpm_val)
-            if len(fpm_buffer) > 10:
+        if on_ground is not None and fpm is not None:
+            fpm_buffer.append(fpm)
+            if len(fpm_buffer) > 20: # Slightly larger buffer for MSFS
                 fpm_buffer.pop(0)
                 
-            if not was_on_ground and is_on_ground:
-                touchdown_fpm = min(fpm_buffer)
+            if not was_on_ground and on_ground:
+                touchdown_fpm = min(fpm_buffer) if fpm_buffer else 0
                 
-                max_g = gforce_val
-                end_time = time.time() + 1.0
-                while time.time() < end_time:
-                    current_g_data = xpc.current_dref_values.get("sim/flightmodel2/misc/gforce_normal", {})
-                    current_g = current_g_data.get("value")
-                    if current_g is not None and current_g > max_g:
-                        max_g = current_g
-                    time.sleep(0.02)
-                
-                lat_dref = xpc.current_dref_values.get("sim/flightmodel/position/latitude", {})
-                lon_dref = xpc.current_dref_values.get("sim/flightmodel/position/longitude", {})
-                lat = lat_dref.get("value", 0)
-                lon = lon_dref.get("value", 0)
-                
-                landing(
+                landing_msg = (
                     f"[bold green]LANDING RECORDED[/bold green]\n\n"
                     f"[bold]Touchdown:[/bold] {touchdown_fpm:.0f} FPM\n"
-                    f"[bold]Max G:[/bold] {max_g:.2f} G\n"
-                    f"[bold]Position:[/bold] {lat:.5f}, {lon:.5f}"
+                    f"[bold]Max G:[/bold] {data.get('gforce', 0):.2f} G"
                 )
-                
-                log(
-                    f"[bold green]LANDING[/bold green] "
-                    f"Touchdown: {touchdown_fpm:.0f} FPM | MaxG: {max_g:.2f} | Pos: {lat:.5f},{lon:.5f}"
-                )
+                landing(landing_msg)
+                log(f"[bold green]LANDING[/bold green] {touchdown_fpm:.0f} FPM")
                 
                 flight_path_data["landings"].append({
                     "timestamp": round(time.time(), 2),
                     "fpm": round(touchdown_fpm, 2),
-                    "g_force": round(max_g, 2),
-                    "lat": round(lat, 5),
-                    "lon": round(lon, 5)
+                    "g_force": round(data.get("gforce") or 0, 2),
+                    "lat": round(data.get("lat") or 0, 5),
+                    "lon": round(data.get("lon") or 0, 5)
                 })
                 
-            was_on_ground = is_on_ground
+            was_on_ground = on_ground
             
-        time.sleep(0.02)
+        time.sleep(0.1) # Monitor doesn't need to be faster than 10Hz
 
 monitor_thread = threading.Thread(target=landing_monitor, daemon=True)
 monitor_thread.start()
 
-last_lat = None
-last_lon = None
-last_alt = None
-
+last_lat, last_lon, last_alt = None, None, None
 layout = build_layout()
 
 try:
@@ -287,45 +265,47 @@ try:
         layout["header"].update(tracking_banner())
 
         while True:
-            lat_data = xpc.current_dref_values.get("sim/flightmodel/position/latitude", {})
-            lon_data = xpc.current_dref_values.get("sim/flightmodel/position/longitude", {})
-            alt_data = xpc.current_dref_values.get("sim/flightmodel/position/elevation", {})
-            speed_data = xpc.current_dref_values.get("sim/flightmodel/position/groundspeed", {})
+            data = provider.get_telemetry()
+            current_telemetry = data 
+            
+            if "error" in data:
+                log("[bold red]ERROR:[/bold red] SimConnect Pipe Disconnected. Is the sim running?")
+                time.sleep(2)
+                continue
+            
+            lat = data.get("lat")
+            lon = data.get("lon")
+            alt = data.get("alt")
+            speed = data.get("gs")
+            now = time.time()
 
-            lat = lat_data.get("value")
-            lon = lon_data.get("value")
-            alt = alt_data.get("value")
-            speed_ms = speed_data.get("value")
-
-            if lat is not None and lon is not None and alt is not None and speed_ms is not None:
-                lat = round(lat, 5)
-                lon = round(lon, 5)
-                alt = int(alt * 3.28084)
-                speed_kts = int(speed_ms * 1.94384)
-
-                if lat != last_lat or lon != last_lon or alt != last_alt:
+            if lat is not None and lon is not None:
+                # Trigger log if position, altitude, or speed changes, OR every 2 seconds as a heartbeat
+                if (lat != last_lat or lon != last_lon or alt != last_alt or 
+                    speed != last_speed or (now - last_log_time) > 2.0):
+                    
                     formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                     
                     log(
                         f"[dim]{formatted_time}[/dim] "
-                        f"[bold cyan]LAT[/bold cyan]: {lat}  "
-                        f"[bold cyan]LON[/bold cyan]: {lon}  "
+                        f"[bold cyan]LAT[/bold cyan]: {lat:.5f}  "
+                        f"[bold cyan]LON[/bold cyan]: {lon:.5f}  "
                         f"[bold yellow]ALT[/bold yellow]: {alt} ft  "
-                        f"[bold green]GS[/bold green]: {speed_kts} kts"
+                        f"[bold green]GS[/bold green]: {speed} kts"
                     )
                     
-                    flight_path_data["path"].append([round(time.time(), 2), lat, lon, alt, speed_kts])
+                    flight_path_data["path"].append([round(now, 2), round(lat, 5), round(lon, 5), alt, speed])
                     
-                    last_lat = lat
-                    last_lon = lon
-                    last_alt = alt
+                    last_lat, last_lon, last_alt, last_speed = lat, lon, alt, speed
+                    last_log_time = now
 
             layout["body"].update(build_log_panel())
-            time.sleep(0.5)
+            time.sleep(0.1) # Increased frequency to 10Hz for smoother console updates
 
 except KeyboardInterrupt:
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"flights/flight_{callsign}_{timestamp_str}.json.gz"
+    os.makedirs("flights", exist_ok=True)
     
     with gzip.open(filename, "wt", encoding="utf-8") as outfile:
         json.dump(flight_path_data, outfile, separators=(',', ':'))
@@ -333,36 +313,19 @@ except KeyboardInterrupt:
     ok(f"Data saved to [bold]{filename}[/bold]")
 
     try:
-        step(f"Uploading {filename} to server...")
-
-        with console.status("[bold cyan]Uploading flight...[/bold cyan]", spinner="earth"):
+        with console.status("[bold cyan]Uploading flight...[/bold cyan]"):
             with open(filename, 'rb') as f:
                 files = {'flight_file': (os.path.basename(filename), f, 'application/gzip')}
                 response = requests.post(API_FLIGHTS_URL, files=files, headers=auth_headers)
 
         if response.status_code == 201:
             ok("Upload successful!")
-            
-            delete_choice = Prompt.ask(
-                "\n[bold yellow]Do you want to delete the local flight file?[/bold yellow]", 
-                choices=["y", "n"], 
-                default="y"
-            )
-            
-            if delete_choice.lower() == 'y':
+            if Prompt.ask("\n[bold yellow]Delete local file?[/bold yellow]", choices=["y", "n"], default="y") == 'y':
                 os.remove(filename)
-                ok(f"Deleted local file: {filename}")
-            else:
-                info(f"Local file kept: {filename}")
-                
-        elif response.status_code == 401:
-            err("Upload failed: Unauthorized. Your API key might be invalid or expired.")
-            warn("Run the script with --logout to clear it and provide a new one.")
-            info(f"The file was kept locally: {filename}")
         else:
-            err(f"Upload failed with status code {response.status_code}.")
-            console.print(response.text)
-            info(f"The file was kept locally: {filename}")
+            err(f"Upload failed: {response.status_code}")
             
-    except requests.exceptions.RequestException as e:
-        err(f"Failed to connect to the server. The file was kept locally. Error: {e}")
+    except Exception as e:
+        err(f"Failed to connect to the server: {e}")
+    
+    provider.close()
