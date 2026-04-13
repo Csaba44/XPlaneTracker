@@ -33,7 +33,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/user/profile', [ProfileController::class, 'update']);
 
     Route::get('/friends', [FriendController::class, 'index']);
+    Route::get('/friends/requests', [FriendController::class, 'requests']);
     Route::get('/friends/search', [FriendController::class, 'search']);
     Route::post('/friends', [FriendController::class, 'store']);
+    Route::patch('/friends/{friendId}/accept', [FriendController::class, 'accept']);
     Route::delete('/friends/{friendId}', [FriendController::class, 'destroy']);
 });

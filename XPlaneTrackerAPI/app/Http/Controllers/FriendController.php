@@ -9,14 +9,18 @@ use Illuminate\Support\Facades\DB;
 
 class FriendController extends Controller
 {
-    // List all accepted friends
     public function index()
     {
         $user = Auth::user();
         return response()->json($user->friends);
     }
 
-    // Search for users to add (excluding yourself)
+    public function requests()
+    {
+        $user = Auth::user();
+        return response()->json($user->pendingFriendRequests);
+    }
+
     public function search(Request $request)
     {
         $query = $request->input('query');
@@ -36,7 +40,6 @@ class FriendController extends Controller
         return response()->json($users);
     }
 
-    // Send a friend request (or auto-accept for now)
     public function store(Request $request)
     {
         $request->validate([
@@ -50,7 +53,6 @@ class FriendController extends Controller
             return response()->json(['message' => 'You cannot add yourself.'], 400);
         }
 
-        // Check if a relationship already exists in either direction
         $exists = DB::table('friendships')
             ->where(function ($query) use ($userId, $friendId) {
                 $query->where('user_id', $userId)->where('friend_id', $friendId);
@@ -64,21 +66,34 @@ class FriendController extends Controller
             return response()->json(['message' => 'Friendship or request already exists.'], 400);
         }
 
-        // Create the friendship. 
-        // Note: Setting status to 'accepted' instantly for testing, 
-        // you can change this to 'pending' when you build the accept UI.
         DB::table('friendships')->insert([
             'user_id' => $userId,
             'friend_id' => $friendId,
-            'status' => 'accepted',
+            'status' => 'pending',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        return response()->json(['message' => 'Friend added successfully.']);
+        return response()->json(['message' => 'Friend request sent.']);
     }
 
-    // Remove a friend
+    public function accept($friendId)
+    {
+        $userId = Auth::id();
+
+        $updated = DB::table('friendships')
+            ->where('user_id', $friendId)
+            ->where('friend_id', $userId)
+            ->where('status', 'pending')
+            ->update(['status' => 'accepted', 'updated_at' => now()]);
+
+        if ($updated) {
+            return response()->json(['message' => 'Friend request accepted.']);
+        }
+
+        return response()->json(['message' => 'Friend request not found.'], 404);
+    }
+
     public function destroy($friendId)
     {
         $userId = Auth::id();
@@ -92,6 +107,6 @@ class FriendController extends Controller
             })
             ->delete();
 
-        return response()->json(['message' => 'Friend removed.']);
+        return response()->json(['message' => 'Friend or request removed.']);
     }
 }
