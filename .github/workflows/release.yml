@@ -21,10 +21,17 @@ jobs:
         run: |
           pip install requests pyinstaller rich SimConnect python-dotenv
 
+      - name: Create .env file
+        shell: bash
+        run: |
+          echo "DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}" > XPlaneTracker/.env
+
       - name: Build EXE
         working-directory: ./XPlaneTracker
         run: |
-          pyinstaller --onefile --name "CSABOLANTA" main.py
+          # Use --add-data to bundle the .env file into the EXE
+          # On Windows, the syntax is "source;destination"
+          pyinstaller --onefile --name "CSABOLANTA" --add-data ".env;." main.py
 
       - name: Create Release
         id: create_release

@@ -7,6 +7,7 @@ import requests
 import argparse
 from datetime import datetime
 from dotenv import load_dotenv
+import sys
 
 from rich.console import Console
 from rich.panel import Panel
@@ -19,8 +20,13 @@ from rich.layout import Layout
 from xp_provider import XPlaneProvider
 from msfs_provider import MSFSProvider
 
-# Load environment variables
-load_dotenv()
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+# Load the .env file from the bundled location
+load_dotenv(resource_path(".env"))
 
 console = Console()
 
