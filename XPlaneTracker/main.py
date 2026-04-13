@@ -8,9 +8,6 @@ import argparse
 from datetime import datetime
 from XPlaneConnectX import XPlaneConnectX
 
-# ---------------------------------------------------------------------------
-# Pretty Console UI (Rich)
-# ---------------------------------------------------------------------------
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -80,8 +77,6 @@ def build_log_panel():
         border_style="cyan",
         box=box.ROUNDED
     )
-
-# ---------------------------------------------------------------------------
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
@@ -187,7 +182,6 @@ os.makedirs("flights", exist_ok=True)
 
 xpc = XPlaneConnectX(ip=HOST_IP)
 
-# Subscribed to groundspeed to calculate Knots
 drefs_to_subscribe = [
     ("sim/flightmodel/position/latitude", 50),
     ("sim/flightmodel/position/longitude", 50),
@@ -208,7 +202,6 @@ flight_path_data = {
         "flight_number": flight_number,
         "airline": airline,
         "start_time": datetime.now().isoformat(),
-        # 5 Columns: Speed is included
         "columns": ["timestamp", "lat", "lon", "alt", "speed"]
     },
     "path": [],
@@ -347,14 +340,27 @@ except KeyboardInterrupt:
 
         if response.status_code == 201:
             ok("Upload successful!")
-            os.remove(filename)
-            ok(f"Deleted local file: {filename}")
+            
+            delete_choice = Prompt.ask(
+                "\n[bold yellow]Do you want to delete the local flight file?[/bold yellow]", 
+                choices=["y", "n"], 
+                default="y"
+            )
+            
+            if delete_choice.lower() == 'y':
+                os.remove(filename)
+                ok(f"Deleted local file: {filename}")
+            else:
+                info(f"Local file kept: {filename}")
+                
         elif response.status_code == 401:
             err("Upload failed: Unauthorized. Your API key might be invalid or expired.")
             warn("Run the script with --logout to clear it and provide a new one.")
+            info(f"The file was kept locally: {filename}")
         else:
             err(f"Upload failed with status code {response.status_code}.")
             console.print(response.text)
+            info(f"The file was kept locally: {filename}")
             
     except requests.exceptions.RequestException as e:
         err(f"Failed to connect to the server. The file was kept locally. Error: {e}")
