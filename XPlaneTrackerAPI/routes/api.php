@@ -11,7 +11,6 @@ use App\Http\Controllers\RunwayController;
 
 Route::post('/login', [AuthController::class, 'login']);
 
-Route::get('/flights/{flight}', [FlightController::class, 'show']);
 Route::get('/runways', [RunwayController::class, 'getRunways']);
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -24,6 +23,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/flights', [FlightController::class, 'store']);
     Route::put('/flights/{flight}', [FlightController::class, 'update']);
     Route::delete('/flights/{flight}', [FlightController::class, 'destroy']);
+    Route::get('/flights/friends', [FlightController::class, 'friendsFlights']);
 
     Route::get('/admin/users', [AdminUserController::class, 'index']);
     Route::post('/admin/users', [AdminUserController::class, 'store']);
@@ -39,3 +39,5 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/friends/{friendId}/accept', [FriendController::class, 'accept']);
     Route::delete('/friends/{friendId}', [FriendController::class, 'destroy']);
 });
+
+Route::get('/flights/{flight}', [FlightController::class, 'show']);

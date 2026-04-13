@@ -5,6 +5,7 @@ import FlightView from '../views/FlightView.vue';
 import SharedFlightView from '../views/SharedFlightView.vue';
 import AdminView from '../views/AdminView.vue';
 import FriendsView from '../views/FriendsView.vue';
+import CommunityView from '../views/CommunityView.vue';
 import { useAuthStore } from '../stores/auth';
 
 const routes = [
@@ -22,6 +23,12 @@ const routes = [
     path: '/flights',
     name: 'flights',
     component: FlightView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/community',
+    name: 'community',
+    component: CommunityView,
     meta: { requiresAuth: true }
   },
   {

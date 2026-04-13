@@ -5,13 +5,22 @@ const props = defineProps({
   searchQuery: String,
   selectedAirline: String,
   selectedRegistration: String,
+  selectedFriend: [String, Number],
   availableAirlines: Array,
   availableRegistrations: Array,
+  availableFriends: {
+    type: Array,
+    default: () => [],
+  },
+  showFriendFilter: {
+    type: Boolean,
+    default: false,
+  },
   filteredCount: Number,
   totalCount: Number,
 });
 
-const emit = defineEmits(["update:searchQuery", "update:selectedAirline", "update:selectedRegistration", "clear"]);
+const emit = defineEmits(["update:searchQuery", "update:selectedAirline", "update:selectedRegistration", "update:selectedFriend", "clear"]);
 
 const localSearch = computed({
   get: () => props.searchQuery,
@@ -27,6 +36,11 @@ const localRegistration = computed({
   get: () => props.selectedRegistration,
   set: (val) => emit("update:selectedRegistration", val),
 });
+
+const localFriend = computed({
+  get: () => props.selectedFriend,
+  set: (val) => emit("update:selectedFriend", val),
+});
 </script>
 
 <template>
@@ -37,17 +51,22 @@ const localRegistration = computed({
     </div>
 
     <div class="flex space-x-2">
-      <select v-model="localAirline" class="flex-grow w-1/2 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-        <option value="">Airline filter</option>
+      <select v-if="showFriendFilter" v-model="localFriend" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
+        <option value="">Pilóta: Összes</option>
+        <option v-for="friend in availableFriends" :key="friend.id" :value="friend.id">{{ friend.name }}</option>
+      </select>
+
+      <select v-model="localAirline" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
+        <option value="">Légitársaság: Összes</option>
         <option v-for="airline in availableAirlines" :key="airline" :value="airline">{{ airline }}</option>
       </select>
 
-      <select v-model="localRegistration" class="flex-grow w-1/2 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-        <option value="">Reg filter</option>
+      <select v-model="localRegistration" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
+        <option value="">Lajstrom: Összes</option>
         <option v-for="reg in availableRegistrations" :key="reg" :value="reg">{{ reg }}</option>
       </select>
 
-      <button v-if="searchQuery || selectedAirline || selectedRegistration" @click="$emit('clear')" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 px-3 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer min-w-[36px]" title="Clear Filters">
+      <button v-if="searchQuery || selectedAirline || selectedRegistration || selectedFriend" @click="$emit('clear')" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 px-3 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer min-w-[36px]" title="Clear Filters">
         <i class="fa-solid fa-filter-circle-xmark"></i>
       </button>
     </div>

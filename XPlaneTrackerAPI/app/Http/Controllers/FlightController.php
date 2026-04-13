@@ -13,7 +13,10 @@ class FlightController extends Controller
 {
     public function index()
     {
-        $flights = Flight::where('user_id', Auth::id())->get();
+        $flights = Flight::where('user_id', Auth::id())
+            ->latest()
+            ->get();
+
         return response()->json($flights);
     }
 
@@ -63,6 +66,19 @@ class FlightController extends Controller
         return $closestIcao;
     }
 
+    // Fetch flights belonging to accepted friends
+    public function friendsFlights()
+    {
+        $user = Auth::user();
+        $friendIds = $user->friends->pluck('id')->toArray();
+
+        $flights = Flight::with('user:id,name')
+            ->whereIn('user_id', $friendIds)
+            ->latest()
+            ->get();
+
+        return response()->json($flights);
+    }
     public function store(Request $request)
     {
         $request->validate([

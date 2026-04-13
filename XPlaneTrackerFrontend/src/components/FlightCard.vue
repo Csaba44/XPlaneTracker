@@ -2,6 +2,10 @@
 const props = defineProps({
   flight: Object,
   isSelected: Boolean,
+  isReadonly: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(["click", "delete", "edit", "share"]);
@@ -14,6 +18,7 @@ const emit = defineEmits(["click", "delete", "edit", "share"]);
         <span :class="['text-xl font-bold transition-colors', isSelected ? 'text-flight-accent' : 'text-white group-hover:text-flight-accent']">
           {{ flight.callsign }}
         </span>
+        <span v-if="flight.user" class="text-[10px] text-teal-400 font-bold uppercase tracking-widest mt-0.5"> <i class="fa-solid fa-user mr-1"></i> {{ flight.user.name }} </span>
         <div class="flex items-center space-x-2 mt-1 bg-black/30 w-fit px-2 py-0.5 rounded border border-white/5">
           <span class="text-[11px] font-black text-slate-300 tracking-widest">{{ flight.dep_icao || "----" }}</span>
           <i class="fa-solid fa-plane text-[9px] text-flight-accent"></i>
@@ -36,10 +41,10 @@ const emit = defineEmits(["click", "delete", "edit", "share"]);
       </div>
 
       <div class="flex items-center space-x-2">
-        <button v-if="isSelected" @click.stop="$emit('delete')" class="text-red-500/60 hover:text-red-500 transition-colors bg-red-500/5 hover:bg-red-500/20 p-1.5 rounded-md cursor-pointer" title="Delete Flight">
+        <button v-if="isSelected && !isReadonly" @click.stop="$emit('delete')" class="text-red-500/60 hover:text-red-500 transition-colors bg-red-500/5 hover:bg-red-500/20 p-1.5 rounded-md cursor-pointer" title="Delete Flight">
           <i class="fa-solid fa-trash"></i>
         </button>
-        <button v-if="isSelected" @click.stop="$emit('edit')" class="text-slate-400 hover:text-flight-accent transition-colors bg-white/5 hover:bg-flight-accent/10 p-1.5 rounded-md cursor-pointer" title="Edit Flight">
+        <button v-if="isSelected && !isReadonly" @click.stop="$emit('edit')" class="text-slate-400 hover:text-flight-accent transition-colors bg-white/5 hover:bg-flight-accent/10 p-1.5 rounded-md cursor-pointer" title="Edit Flight">
           <i class="fa-solid fa-pen"></i>
         </button>
         <button v-if="isSelected" @click.stop="$emit('share')" class="text-flight-accent hover:text-white transition-colors bg-flight-accent/10 hover:bg-flight-accent p-1.5 rounded-md cursor-pointer" title="Share Flight">
