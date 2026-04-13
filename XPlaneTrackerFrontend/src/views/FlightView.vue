@@ -34,6 +34,9 @@ const editFlightForm = ref({
   arr_icao: "",
 });
 
+const fileInput = ref(null);
+const isUploading = ref(false);
+
 const availableAirlines = computed(() => {
   const airlines = flights.value.map((f) => f.airline).filter(Boolean);
   return [...new Set(airlines)].sort();
@@ -86,6 +89,37 @@ const generateApiKey = async () => {
     generatedApiKey.value = response.data.token;
   } catch (error) {
     console.error(error);
+  }
+};
+
+const triggerFileInput = () => {
+  fileInput.value.click();
+};
+
+const handleFileUpload = async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const formData = new FormData();
+  formData.append("flight_file", file);
+
+  isUploading.value = true;
+
+  try {
+    const response = await api.post("/api/flights", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
+    flights.value.push(response.data);
+    toast.success("Járat sikeresen feltöltve.");
+  } catch (error) {
+    console.error(error);
+    toast.error(error.response?.data?.message || "Hiba a járat feltöltésekor.");
+  } finally {
+    isUploading.value = false;
+    event.target.value = null;
   }
 };
 
@@ -184,10 +218,8 @@ const deleteFlight = async (id) => {
   try {
     await api.delete(`/api/flights/${id}`);
 
-    // Remove the flight from the sidebar list immediately
     flights.value = flights.value.filter((f) => f.id !== id);
 
-    // If they deleted the flight they were currently viewing, clear the map
     if (selectedFlightId.value === id) {
       selectedFlightId.value = null;
       currentFlightData.value = null;
@@ -241,6 +273,11 @@ onMounted(async () => {
           <router-link v-if="authStore.user?.is_admin === 1" to="/admin" class="w-full text-center bg-purple-500/10 hover:bg-purple-500 text-purple-500 hover:text-white border border-purple-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider block"> Admin Panel </router-link>
 
           <button @click="generateApiKey" class="w-full bg-flight-accent/10 hover:bg-flight-accent text-flight-accent hover:text-white border border-flight-accent transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">Generate API Key</button>
+
+          <input type="file" accept=".gz" ref="fileInput" @change="handleFileUpload" style="display: none" />
+          <button @click="triggerFileInput" :disabled="isUploading" class="w-full bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-white border border-green-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer disabled:opacity-50 mt-2">
+            {{ isUploading ? "Töltöm teso..." : "Manual PIREP" }}
+          </button>
 
           <div v-if="generatedApiKey" class="bg-black/50 p-3 rounded-lg border border-flight-border mt-2">
             <p class="text-[10px] text-red-400 font-bold uppercase mb-1">Vigyázz rá testvérem, el ne lopják a cigányok!</p>
