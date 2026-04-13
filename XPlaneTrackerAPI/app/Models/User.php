@@ -31,6 +31,31 @@ class User extends Authenticatable
         ];
     }
 
+    // Users that this user added
+    public function friendsAdded()
+    {
+        return $this->belongsToMany(User::class, 'friendships', 'user_id', 'friend_id')
+            ->withPivot('status')
+            ->withTimestamps();
+    }
+
+    // Users that added this user
+    public function friendsAddedBy()
+    {
+        return $this->belongsToMany(User::class, 'friendships', 'friend_id', 'user_id')
+            ->withPivot('status')
+            ->withTimestamps();
+    }
+
+    // A helper to get ALL accepted friends in one collection
+    public function getFriendsAttribute()
+    {
+        $added = $this->friendsAdded()->wherePivot('status', 'accepted')->get();
+        $addedBy = $this->friendsAddedBy()->wherePivot('status', 'accepted')->get();
+
+        return $added->merge($addedBy);
+    }
+
     public function flights(): HasMany
     {
         return $this->hasMany(Flight::class);

@@ -43,6 +43,11 @@ const handleFileChange = (event) => {
       </div>
     </div>
 
+    <router-link to="/friends" class="w-full flex justify-center items-center space-x-2 bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-white border border-amber-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">
+      <i class="fa-solid fa-users"></i>
+      <span>Barátok</span>
+    </router-link>
+
     <router-link v-if="user?.is_admin === 1" to="/admin" class="w-full text-center bg-purple-500/10 hover:bg-purple-500 text-purple-500 hover:text-white border border-purple-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider block"> Admin Panel </router-link>
 
     <button @click="$emit('generateApiKey')" class="w-full bg-flight-accent/10 hover:bg-flight-accent text-flight-accent hover:text-white border border-flight-accent transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">Generate API Key</button>

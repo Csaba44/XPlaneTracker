@@ -5,6 +5,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FlightController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\FriendController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RunwayController;
 
@@ -30,4 +31,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy']);
 
     Route::put('/user/profile', [ProfileController::class, 'update']);
+
+    Route::get('/friends', [FriendController::class, 'index']);
+    Route::get('/friends/search', [FriendController::class, 'search']);
+    Route::post('/friends', [FriendController::class, 'store']);
+    Route::delete('/friends/{friendId}', [FriendController::class, 'destroy']);
 });
