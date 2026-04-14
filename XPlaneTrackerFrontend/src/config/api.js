@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.PROD ? "https://api.vacchunesports.online" : "/",
+  baseURL: import.meta.env.PROD ? "https://api.csabolanta.hu" : "/",
   withCredentials: true,
 });
 

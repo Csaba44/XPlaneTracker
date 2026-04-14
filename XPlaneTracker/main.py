@@ -178,7 +178,7 @@ parser.add_argument("--no-webhook", action="store_true", help="Disable Discord w
 args = parser.parse_args()
 
 TOKEN_FILE = ".xtracker_token"
-API_BASE_URL = "http://xtracker.local:5173/api" if args.dev else "https://api.vacchunesports.online/api"
+API_BASE_URL = "http://xtracker.local:5173/api" if args.dev else "https://api.csabolanta.hu/api"
 API_FLIGHTS_URL = f"{API_BASE_URL}/flights"
 API_USER_URL = f"{API_BASE_URL}/user"
 
