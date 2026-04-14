@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\Api\LiveFlightController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FlightController;
@@ -38,6 +39,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/friends', [FriendController::class, 'store']);
     Route::patch('/friends/{friendId}/accept', [FriendController::class, 'accept']);
     Route::delete('/friends/{friendId}', [FriendController::class, 'destroy']);
+
+    Route::post('/flights/live', [LiveFlightController::class, 'update']);
+    Route::get('/flights/live', [LiveFlightController::class, 'index']);
 });
 
 Route::get('/flights/{flight}', [FlightController::class, 'show']);
