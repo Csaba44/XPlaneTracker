@@ -20,8 +20,6 @@ services:
     build:
       context: ./XPlaneTrackerAPI
       target: dev
-    ports:
-      - "8081:8080"
     entrypoint: ["/bin/sh", "/docker/entrypoint.sh"]
     command: php-fpm
     volumes:
@@ -40,6 +38,25 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  reverb:
+    user: "${UID}:${GID}"
+    container_name: xtracker_reverb
+    build:
+      context: ./XPlaneTrackerAPI
+      target: dev
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    volumes:
+      - ./XPlaneTrackerAPI:/var/www
+      - ./XPlaneTrackerAPI/docker/dev/entrypoint.sh:/docker/entrypoint.sh
+    env_file:
+      - .env.dev
+    ports:
+      - "8081:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+
   artisan:
     user: "${UID}:${GID}"
     container_name: xtracker_artisan

@@ -14,7 +14,8 @@ class XPlaneProvider(BaseProvider):
             ("sim/flightmodel/failures/onground_any", 50),
             ("sim/flightmodel/position/vh_ind_fpm", 50),
             ("sim/flightmodel2/misc/gforce_normal", 50),
-            ("sim/flightmodel/position/groundspeed", 50)
+            ("sim/flightmodel/position/groundspeed", 50),
+            ("sim/flightmodel/position/true_psi", 50)
         ]
         
         self.lock = threading.Lock()
@@ -80,6 +81,7 @@ class XPlaneProvider(BaseProvider):
         raw_fpm = vals.get("sim/flightmodel/position/vh_ind_fpm", {}).get("value")
         raw_gforce = vals.get("sim/flightmodel2/misc/gforce_normal", {}).get("value")
         onground_val = vals.get("sim/flightmodel/failures/onground_any", {}).get("value")
+        heading = vals.get("sim/flightmodel/position/true_psi", {}).get("value")
 
         is_on_ground = bool(onground_val == 1.0) if onground_val is not None else None
         
@@ -98,7 +100,8 @@ class XPlaneProvider(BaseProvider):
             "gs": int(gs_ms * 1.94384) if gs_ms is not None else None,
             "fpm": reported_fpm,
             "gforce": reported_gforce,
-            "on_ground": is_on_ground
+            "on_ground": is_on_ground,
+            "heading": round(heading, 2) if heading is not None else 0
         }
 
     def close(self):

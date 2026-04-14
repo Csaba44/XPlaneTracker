@@ -31,6 +31,7 @@ console = Console()
 current_telemetry = {"lat": None, "on_ground": None}
 log_lines = []
 user_name = "Pilot"
+user_id = -1
 
 landing_buffer = []
 buffer_lock = threading.Lock()
@@ -174,6 +175,7 @@ TOKEN_FILE = ".xtracker_token"
 API_BASE_URL = "http://xtracker.local:5173/api" if args.dev else "https://api.csabolanta.hu/api"
 API_FLIGHTS_URL = f"{API_BASE_URL}/flights"
 API_USER_URL = f"{API_BASE_URL}/user"
+API_LIVE_URL = f"{API_BASE_URL}/flights/live"
 
 header()
 
@@ -197,7 +199,9 @@ try:
     with console.status("[bold cyan]Verifying Auth...[/bold cyan]"):
         user_res = requests.get(API_USER_URL, headers=auth_headers)
     if user_res.status_code == 200:
-        user_name = user_res.json().get('name', 'Pilot')
+        user_data = user_res.json()
+        user_name = user_data.get('name', 'Pilot')
+        user_id = user_data.get('id')
         ok(f"Authenticated as [bold]{user_name}[/bold]")
     else:
         err("Invalid API Key.")
@@ -274,6 +278,35 @@ def landing_monitor():
         time.sleep(0.1)
 
 threading.Thread(target=landing_monitor, daemon=True).start()
+
+
+def live_heartbeat():
+    while True:
+        time.sleep(5.0)
+        data = current_telemetry
+        lat = data.get("lat")
+        lon = data.get("lon")
+        
+        if lat is None or lon is None:
+            continue
+
+        payload = {
+            "user_id": user_id,
+            "lat": lat,
+            "lon": lon,
+            "alt": data.get("alt", 0),
+            "gs": data.get("gs", 0),
+            "heading": data.get("heading", 0),
+            "timestamp": int(time.time()),
+            "landing": False
+        }
+
+        try:
+            requests.post(API_LIVE_URL, json=payload, headers=auth_headers, timeout=3)
+        except Exception:
+            pass
+
+threading.Thread(target=live_heartbeat, daemon=True).start()
 
 last_lat, last_lon, last_alt, last_speed = None, None, None, None
 last_log_time = 0

@@ -12,10 +12,16 @@ import VChart from "vue-echarts";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, TitleComponent]);
 
+const emit = defineEmits(["flight-clicked"]);
+
 const props = defineProps({
   flightData: {
     type: Object,
     default: null,
+  },
+  liveFlights: {
+    type: Array,
+    default: () => [],
   },
 });
 
@@ -25,6 +31,9 @@ const chartRef = ref(null);
 let map = null;
 let pathLayers = [];
 let hoverMarker = null;
+
+// Új: Élő markereket tároló map
+const liveMarkers = new Map();
 
 const runwayCache = new Map();
 const pendingRequests = new Set();
@@ -91,16 +100,6 @@ const angleDiff = (a, b) => {
   return d > 180 ? 360 - d : d;
 };
 
-// --- OPTIMIZATION 1: Ramer–Douglas–Peucker path simplification ---
-// Tolerance ~0.00015° ≈ 15 m on ground. Invisible at any zoom but removes
-// ~80-95% of points on straight cruise segments logged at 10 Hz.
-// --- Speed-adaptive Ramer–Douglas–Peucker simplification ---
-// Tolerance scales with groundspeed so taxi paths keep full fidelity while
-// high-speed cruise segments are aggressively thinned.
-//   GS <  50 kts  → 0.000005° (~0.5 m)  — taxi/pushback
-//   GS  50–150    → 0.000025° (~2.5 m)  — approach/departure
-//   GS 150–300    → 0.00007°  (~7 m)    — climb/descent
-//   GS > 300      → 0.00015°  (~15 m)   — cruise
 const toleranceForGS = (gs) => {
   if (gs < 50) return 0.000015;
   if (gs < 150) return 0.000015;
@@ -120,8 +119,6 @@ const rdpPerpendicularDist = (point, lineStart, lineEnd) => {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 };
 
-// Adaptive RDP — tolerance array is parallel to points array.
-// Uses the minimum tolerance of the segment endpoints (conservative).
 const rdpAdaptive = (points, tolerances) => {
   if (points.length <= 2) return points;
   let maxDist = 0,
@@ -142,8 +139,6 @@ const rdpAdaptive = (points, tolerances) => {
   return [points[0], points[points.length - 1]];
 };
 
-// --- OPTIMIZATION 2: Tooltip data index lookup for merged polylines ---
-// Each merged polyline stores its point array and altitudes for nearest-point tooltip.
 const nearestPointOnPolyline = (latlng, points) => {
   let minDist = Infinity,
     nearest = null,
@@ -159,7 +154,6 @@ const nearestPointOnPolyline = (latlng, points) => {
   return { point: nearest, idx: nearestIdx };
 };
 
-// --- Chart data & pointer logic (unchanged) ---
 const chartData = computed(() => {
   if (!props.flightData?.path) return [];
   let totalDist = 0;
@@ -242,7 +236,6 @@ const chartOptions = computed(() => ({
   ],
 }));
 
-// --- Runway drawing (unchanged) ---
 const drawRunway = (el) => {
   if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
   let cl = el.geometry.map((g) => [g.lat, g.lon]);
@@ -359,12 +352,11 @@ const initMap = () => {
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 }).addTo(map);
 };
 
-// OPTIMIZATION 3: Batch layer removal via requestAnimationFrame to avoid
-// forced synchronous layout on every removeLayer call.
 const clearMap = () => {
   if (!map) return;
   const layers = pathLayers.splice(0);
   pendingRequests.clear();
+  // KIFEJEZETTEN nem töröljük a liveMarkereket, hogy a többi repülő a pályarajzolás alatt is látszódjon!
   requestAnimationFrame(() => {
     layers.forEach((l) => map.removeLayer(l));
   });
@@ -374,22 +366,15 @@ const drawFlight = (data) => {
   clearMap();
   if (!map || !data?.path) return;
 
-  // OPTIMIZATION 4: Speed-adaptive RDP simplification.
-  // Chart (chartData) uses props.flightData.path directly — full fidelity preserved.
-  // For rendering only we work on the simplified copy.
   const rawPath = data.path;
   const coordsForRDP = rawPath.map((p) => [p[1], p[2]]);
   const tolerances = rawPath.map((p) => toleranceForGS(p[4] || 0));
   const simplifiedCoords = rdpAdaptive(coordsForRDP, tolerances);
 
-  // Map simplified coords back to original path entries so alt/gs travel with each point.
   const coordKey = (lat, lon) => `${lat.toFixed(6)},${lon.toFixed(6)}`;
   const pointMap = new Map(rawPath.map((p) => [coordKey(p[1], p[2]), p]));
   const reducedPath = simplifiedCoords.map((coord) => pointMap.get(coordKey(coord[0], coord[1])) || [null, coord[0], coord[1], 0, 0]);
 
-  // OPTIMIZATION 5: Group consecutive same-color points into a single polyline.
-  // Instead of N-1 individual segment layers, we get at most 6 color-group layers
-  // (one per altitude band). This is the largest DOM/canvas reduction.
   const colorGroups = [];
   let currentColor = null;
   let currentGroup = null;
@@ -398,7 +383,6 @@ const drawFlight = (data) => {
     const p = reducedPath[i];
     const color = getColor(p[3]);
     if (color !== currentColor) {
-      // When color changes, share the junction point so there's no gap.
       if (currentGroup) {
         currentGroup.points.push([p[1], p[2]]);
         currentGroup.altitudes.push(p[3]);
@@ -414,8 +398,6 @@ const drawFlight = (data) => {
     }
   }
 
-  // OPTIMIZATION 6: Build all polylines, attach a single mousemove tooltip per
-  // group (not per segment). Use a LayerGroup to add everything in one go.
   const flightLayerGroup = L.layerGroup();
 
   colorGroups.forEach((group) => {
@@ -428,8 +410,6 @@ const drawFlight = (data) => {
       pane: "flightPathPane",
     });
 
-    // OPTIMIZATION 7: Use mousemove with nearest-point lookup instead of
-    // per-segment tooltip bindings. One event listener per color group.
     poly.on("mousemove", (e) => {
       const { idx } = nearestPointOnPolyline(e.latlng, group.points);
       poly.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${group.altitudes[idx]} ft<br><b>GS:</b> ${group.speeds[idx] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip", permanent: false }).openTooltip(e.latlng);
@@ -440,7 +420,6 @@ const drawFlight = (data) => {
     pathLayers.push(poly);
   });
 
-  // Add all flight path layers at once
   flightLayerGroup.addTo(map);
 
   if (data.landings?.length) {
@@ -475,6 +454,62 @@ const drawFlight = (data) => {
   }
 };
 
+// ÚJ: ÉLŐ MARKEREK KEZELÉSE REAKTÍVAN
+watch(
+  () => props.liveFlights,
+  (newFlights) => {
+    if (!map) return;
+
+    const currentIds = new Set(newFlights.map((f) => f.user_id));
+
+    // Töröljük a lelépett embereket
+    for (const [id, marker] of liveMarkers.entries()) {
+      if (!currentIds.has(id)) {
+        map.removeLayer(marker);
+        liveMarkers.delete(id);
+      }
+    }
+
+    // Frissítjük vagy létrehozzuk a meglevőket
+    newFlights.forEach((flight) => {
+      const { user_id, lat, lon, heading, alt, gs } = flight;
+
+      if (!liveMarkers.has(user_id)) {
+        const iconHtml = `<div id="plane-icon-${user_id}" style="transform: rotate(${heading}deg); transition: transform 0.5s linear; cursor: pointer;">
+                          <i class="fa-solid fa-plane text-red-500 text-2xl drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]" style="filter: drop-shadow(0 0 5px rgba(0,0,0,0.5));"></i>
+                        </div>`;
+        const icon = L.divIcon({
+          html: iconHtml,
+          className: "custom-div-icon",
+          iconSize: [30, 30],
+          iconAnchor: [15, 15],
+        });
+
+        const marker = L.marker([lat, lon], { icon, zIndexOffset: 2000 }).addTo(map);
+
+        marker.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${alt} ft<br><b>GS:</b> ${gs} KTS</div>`, { direction: "top", offset: [0, -10], className: "flight-path-tooltip" });
+
+        // Kattintás esemény!
+        marker.on("click", () => {
+          emit("flight-clicked", user_id);
+        });
+
+        liveMarkers.set(user_id, marker);
+      } else {
+        const marker = liveMarkers.get(user_id);
+        marker.setLatLng([lat, lon]);
+        marker.setTooltipContent(`<div class="font-mono text-xs"><b>ALT:</b> ${alt} ft<br><b>GS:</b> ${gs} KTS</div>`);
+
+        const iconEl = document.getElementById(`plane-icon-${user_id}`);
+        if (iconEl) {
+          iconEl.style.transform = `rotate(${heading}deg)`;
+        }
+      }
+    });
+  },
+  { deep: true },
+);
+
 watch(
   () => props.flightData,
   (newData) => drawFlight(newData),
@@ -491,7 +526,7 @@ onMounted(() => {
   <main class="flex-grow relative">
     <div ref="mapContainer" class="absolute inset-0 w-full h-full z-0"></div>
 
-    <button @click="isChartVisible = !isChartVisible" class="absolute bottom-6 left-6 z-[1000] bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group">
+    <button @click="isChartVisible = !isChartVisible" class="absolute bottom-6 left-6 z-[1000] bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group cursor-pointer">
       <i class="fa-solid fa-chart-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
       <span class="font-bold text-xs uppercase tracking-widest">Grafikon</span>
     </button>
@@ -499,7 +534,7 @@ onMounted(() => {
     <div v-if="isChartVisible" class="absolute bottom-20 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
       <div class="flex justify-between items-center mb-2 px-2">
         <h4 class="text-white text-[10px] font-black uppercase tracking-tighter opacity-50">Flight Profile</h4>
-        <button @click="isChartVisible = false" class="text-slate-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark"></i></button>
+        <button @click="isChartVisible = false" class="text-slate-400 hover:text-white transition-colors cursor-pointer"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <div class="w-full h-48">
         <v-chart ref="chartRef" class="chart" :option="chartOptions" autoresize @updateAxisPointer="handleAxisPointer" @globalout="clearHoverMarker" />

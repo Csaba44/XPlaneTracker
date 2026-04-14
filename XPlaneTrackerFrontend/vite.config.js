@@ -14,6 +14,10 @@ export default defineConfig({
         target: "http://nginx",
         changeOrigin: true,
       },
+      "/ws": {
+        target: "http://reverb:8081",
+        changeOrigin: true,
+      },
     },
     allowedHosts: ["xtracker.local"],
   },
