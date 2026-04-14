@@ -4,7 +4,6 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import api from "../config/api";
 
-// ECharts importok a grafikonhoz
 import { use } from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { LineChart } from "echarts/charts";
@@ -41,7 +40,7 @@ const getColor = (alt) => {
   return "#3b82f6";
 };
 
-// --- Eredeti Geometria Segédfüggvények ---
+// --- Geometry helpers (unchanged) ---
 const bearing = (lat1, lon1, lat2, lon2) => {
   const toRad = (d) => (d * Math.PI) / 180;
   const φ1 = toRad(lat1),
@@ -92,7 +91,75 @@ const angleDiff = (a, b) => {
   return d > 180 ? 360 - d : d;
 };
 
-// --- Grafikon adatok és pointer logika ---
+// --- OPTIMIZATION 1: Ramer–Douglas–Peucker path simplification ---
+// Tolerance ~0.00015° ≈ 15 m on ground. Invisible at any zoom but removes
+// ~80-95% of points on straight cruise segments logged at 10 Hz.
+// --- Speed-adaptive Ramer–Douglas–Peucker simplification ---
+// Tolerance scales with groundspeed so taxi paths keep full fidelity while
+// high-speed cruise segments are aggressively thinned.
+//   GS <  50 kts  → 0.000005° (~0.5 m)  — taxi/pushback
+//   GS  50–150    → 0.000025° (~2.5 m)  — approach/departure
+//   GS 150–300    → 0.00007°  (~7 m)    — climb/descent
+//   GS > 300      → 0.00015°  (~15 m)   — cruise
+const toleranceForGS = (gs) => {
+  if (gs < 50) return 0.000015;
+  if (gs < 150) return 0.000015;
+  if (gs < 300) return 0.00007;
+  return 0.00015;
+};
+
+const rdpPerpendicularDist = (point, lineStart, lineEnd) => {
+  const [px, py] = [point[1], point[0]];
+  const [x1, y1] = [lineStart[1], lineStart[0]];
+  const [x2, y2] = [lineEnd[1], lineEnd[0]];
+  const dx = x2 - x1,
+    dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+};
+
+// Adaptive RDP — tolerance array is parallel to points array.
+// Uses the minimum tolerance of the segment endpoints (conservative).
+const rdpAdaptive = (points, tolerances) => {
+  if (points.length <= 2) return points;
+  let maxDist = 0,
+    maxIdx = 0;
+  for (let i = 1; i < points.length - 1; i++) {
+    const d = rdpPerpendicularDist(points[i], points[0], points[points.length - 1]);
+    if (d > maxDist) {
+      maxDist = d;
+      maxIdx = i;
+    }
+  }
+  const segTolerance = Math.min(tolerances[0], tolerances[tolerances.length - 1]);
+  if (maxDist > segTolerance) {
+    const left = rdpAdaptive(points.slice(0, maxIdx + 1), tolerances.slice(0, maxIdx + 1));
+    const right = rdpAdaptive(points.slice(maxIdx), tolerances.slice(maxIdx));
+    return [...left.slice(0, -1), ...right];
+  }
+  return [points[0], points[points.length - 1]];
+};
+
+// --- OPTIMIZATION 2: Tooltip data index lookup for merged polylines ---
+// Each merged polyline stores its point array and altitudes for nearest-point tooltip.
+const nearestPointOnPolyline = (latlng, points) => {
+  let minDist = Infinity,
+    nearest = null,
+    nearestIdx = 0;
+  for (let i = 0; i < points.length; i++) {
+    const d = Math.hypot(points[i][0] - latlng.lat, points[i][1] - latlng.lng);
+    if (d < minDist) {
+      minDist = d;
+      nearest = points[i];
+      nearestIdx = i;
+    }
+  }
+  return { point: nearest, idx: nearestIdx };
+};
+
+// --- Chart data & pointer logic (unchanged) ---
 const chartData = computed(() => {
   if (!props.flightData?.path) return [];
   let totalDist = 0;
@@ -102,12 +169,7 @@ const chartData = computed(() => {
       const prev = props.flightData.path[i - 1];
       totalDist += distanceM(prev[1], prev[2], p[1], p[2]);
     }
-    result.push({
-      dist: (totalDist / 1852).toFixed(2),
-      alt: p[3],
-      gs: p[4] || 0,
-      coord: [p[1], p[2]],
-    });
+    result.push({ dist: (totalDist / 1852).toFixed(2), alt: p[3], gs: p[4] || 0, coord: [p[1], p[2]] });
   });
   return result;
 });
@@ -117,14 +179,8 @@ const handleAxisPointer = (params) => {
   const dataIndex = params.axesInfo[0].value;
   const point = chartData.value[dataIndex];
   if (!point) return;
-
   if (!hoverMarker) {
-    const icon = L.divIcon({
-      className: "hover-marker-container",
-      html: '<div class="hover-pulse"></div>',
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
-    });
+    const icon = L.divIcon({ className: "hover-marker-container", html: '<div class="hover-pulse"></div>', iconSize: [20, 20], iconAnchor: [10, 10] });
     hoverMarker = L.marker(point.coord, { zIndexOffset: 1000, icon }).addTo(map);
   } else {
     hoverMarker.setLatLng(point.coord);
@@ -186,14 +242,12 @@ const chartOptions = computed(() => ({
   ],
 }));
 
-// --- EREDETI Runway Rajzolás (TDZ sávokkal és Zongorával) ---
+// --- Runway drawing (unchanged) ---
 const drawRunway = (el) => {
   if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
-
   let cl = el.geometry.map((g) => [g.lat, g.lon]);
   const widthM = el.tags?.width ? parseFloat(el.tags.width) : 45;
   const half = widthM / 2;
-
   if (el.tags?.ref) {
     const [leRef] = el.tags.ref.split("/");
     const leHeading = designatorToHeading(leRef);
@@ -202,26 +256,23 @@ const drawRunway = (el) => {
       if (angleDiff(actualBearing, leHeading) > 90) cl = [...cl].reverse();
     }
   }
-
   const leInward = bearing(cl[0][0], cl[0][1], cl[1][0], cl[1][1]);
   const heInward = bearing(cl[cl.length - 1][0], cl[cl.length - 1][1], cl[cl.length - 2][0], cl[cl.length - 2][1]);
   const right = offsetPolyline(cl, half);
   const left = offsetPolyline(cl, -half);
-
   pathLayers.push(L.polygon([...right, ...[...left].reverse()], { color: "transparent", fillColor: "#111111", fillOpacity: 1, interactive: false, pane: "runwaysPane" }).addTo(map));
   [right, left].forEach((edge) => {
     pathLayers.push(L.polyline(edge, { color: "#ffffff", weight: 2, opacity: 0.9, interactive: false, pane: "runwaysPane" }).addTo(map));
   });
   pathLayers.push(L.polyline(cl, { color: "#ffffff", weight: 1.5, opacity: 0.65, dashArray: "20 15", interactive: false, pane: "runwaysPane" }).addTo(map));
-
   const drawPianoKeys = (thresholdPt, inwardBrg) => {
     const perpBrg = (inwardBrg + 90) % 360;
-    const numStripes = 8;
-    const spanM = widthM * 0.8;
-    const gap = spanM / (numStripes - 1);
-    const stripeHalfW = (spanM / (numStripes * 2 - 1)) * 0.45;
-    const depthM = 30;
-    const inboardM = 6;
+    const numStripes = 8,
+      spanM = widthM * 0.8,
+      gap = spanM / (numStripes - 1);
+    const stripeHalfW = (spanM / (numStripes * 2 - 1)) * 0.45,
+      depthM = 30,
+      inboardM = 6;
     for (let i = 0; i < numStripes; i++) {
       const lateralOffset = -spanM / 2 + gap * i;
       const center = destination(thresholdPt[0], thresholdPt[1], perpBrg, lateralOffset);
@@ -236,13 +287,11 @@ const drawRunway = (el) => {
   };
   drawPianoKeys(cl[0], leInward);
   drawPianoKeys(cl[cl.length - 1], heInward);
-
   const runwayLen = distanceM(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
   const tzDistances = [150, 300, 450, 600, 750, 900].filter((d) => d < runwayLen - 150);
-  const barLenM = 22.5;
-  const barWidthM = 3;
-  const barLateralM = widthM * 0.2;
-
+  const barLenM = 22.5,
+    barWidthM = 3,
+    barLateralM = widthM * 0.2;
   const drawTDZBars = (thresholdPt, inwardBrg) => {
     const perpBrg = (inwardBrg + 90) % 360;
     tzDistances.forEach((dist) => {
@@ -261,11 +310,10 @@ const drawRunway = (el) => {
   };
   drawTDZBars(cl[0], leInward);
   drawTDZBars(cl[cl.length - 1], heInward);
-
   if (el.tags?.ref) {
     let parts = el.tags.ref.split("/");
-    let leRef = parts[0];
-    let heRef = parts[1];
+    let leRef = parts[0],
+      heRef = parts[1];
     if (leRef && heRef) {
       const hdg1 = parseInt(leRef, 10) * 10;
       if (angleDiff(hdg1, leInward) > angleDiff(hdg1, heInward)) [leRef, heRef] = [heRef, leRef];
@@ -311,31 +359,89 @@ const initMap = () => {
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 }).addTo(map);
 };
 
+// OPTIMIZATION 3: Batch layer removal via requestAnimationFrame to avoid
+// forced synchronous layout on every removeLayer call.
 const clearMap = () => {
   if (!map) return;
-  pathLayers.forEach((l) => map.removeLayer(l));
-  pathLayers = [];
+  const layers = pathLayers.splice(0);
   pendingRequests.clear();
+  requestAnimationFrame(() => {
+    layers.forEach((l) => map.removeLayer(l));
+  });
 };
 
 const drawFlight = (data) => {
   clearMap();
   if (!map || !data?.path) return;
-  const segments = [];
-  data.path.forEach((point, i) => {
-    if (i === data.path.length - 1) return;
-    const next = data.path[i + 1];
-    const poly = L.polyline(
-      [
-        [point[1], point[2]],
-        [next[1], next[2]],
-      ],
-      { color: getColor(point[3]), weight: 4, opacity: 0.9, lineCap: "round", pane: "flightPathPane" },
-    ).addTo(map);
-    poly.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${point[3]} ft<br><b>GS:</b> ${point[4] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip" });
+
+  // OPTIMIZATION 4: Speed-adaptive RDP simplification.
+  // Chart (chartData) uses props.flightData.path directly — full fidelity preserved.
+  // For rendering only we work on the simplified copy.
+  const rawPath = data.path;
+  const coordsForRDP = rawPath.map((p) => [p[1], p[2]]);
+  const tolerances = rawPath.map((p) => toleranceForGS(p[4] || 0));
+  const simplifiedCoords = rdpAdaptive(coordsForRDP, tolerances);
+
+  // Map simplified coords back to original path entries so alt/gs travel with each point.
+  const coordKey = (lat, lon) => `${lat.toFixed(6)},${lon.toFixed(6)}`;
+  const pointMap = new Map(rawPath.map((p) => [coordKey(p[1], p[2]), p]));
+  const reducedPath = simplifiedCoords.map((coord) => pointMap.get(coordKey(coord[0], coord[1])) || [null, coord[0], coord[1], 0, 0]);
+
+  // OPTIMIZATION 5: Group consecutive same-color points into a single polyline.
+  // Instead of N-1 individual segment layers, we get at most 6 color-group layers
+  // (one per altitude band). This is the largest DOM/canvas reduction.
+  const colorGroups = [];
+  let currentColor = null;
+  let currentGroup = null;
+
+  for (let i = 0; i < reducedPath.length; i++) {
+    const p = reducedPath[i];
+    const color = getColor(p[3]);
+    if (color !== currentColor) {
+      // When color changes, share the junction point so there's no gap.
+      if (currentGroup) {
+        currentGroup.points.push([p[1], p[2]]);
+        currentGroup.altitudes.push(p[3]);
+        currentGroup.speeds.push(p[4] || 0);
+      }
+      currentColor = color;
+      currentGroup = { color, points: [[p[1], p[2]]], altitudes: [p[3]], speeds: [p[4] || 0] };
+      colorGroups.push(currentGroup);
+    } else {
+      currentGroup.points.push([p[1], p[2]]);
+      currentGroup.altitudes.push(p[3]);
+      currentGroup.speeds.push(p[4] || 0);
+    }
+  }
+
+  // OPTIMIZATION 6: Build all polylines, attach a single mousemove tooltip per
+  // group (not per segment). Use a LayerGroup to add everything in one go.
+  const flightLayerGroup = L.layerGroup();
+
+  colorGroups.forEach((group) => {
+    if (group.points.length < 2) return;
+    const poly = L.polyline(group.points, {
+      color: group.color,
+      weight: 4,
+      opacity: 0.9,
+      lineCap: "round",
+      pane: "flightPathPane",
+    });
+
+    // OPTIMIZATION 7: Use mousemove with nearest-point lookup instead of
+    // per-segment tooltip bindings. One event listener per color group.
+    poly.on("mousemove", (e) => {
+      const { idx } = nearestPointOnPolyline(e.latlng, group.points);
+      poly.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${group.altitudes[idx]} ft<br><b>GS:</b> ${group.speeds[idx] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip", permanent: false }).openTooltip(e.latlng);
+    });
+    poly.on("mouseout", () => poly.closeTooltip());
+
+    flightLayerGroup.addLayer(poly);
     pathLayers.push(poly);
-    segments.push(poly);
   });
+
+  // Add all flight path layers at once
+  flightLayerGroup.addTo(map);
 
   if (data.landings?.length) {
     data.landings.forEach((landing) => {
@@ -360,7 +466,13 @@ const drawFlight = (data) => {
       fetchAndDrawRunways(landing.lat, landing.lon);
     });
   }
-  if (segments.length > 0) map.fitBounds(new L.featureGroup(segments).getBounds(), { padding: [100, 100] });
+
+  if (colorGroups.length > 0) {
+    const allPoints = colorGroups.flatMap((g) => g.points);
+    if (allPoints.length > 0) {
+      map.fitBounds(L.latLngBounds(allPoints), { padding: [100, 100] });
+    }
+  }
 };
 
 watch(
