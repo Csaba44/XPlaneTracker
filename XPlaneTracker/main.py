@@ -5,7 +5,7 @@ import gzip
 import threading
 import requests
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 import sys
 
@@ -21,21 +21,17 @@ from xp_provider import XPlaneProvider
 from msfs_provider import MSFSProvider
 
 def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
-# Load the .env file from the bundled location
 load_dotenv(resource_path(".env"))
 
 console = Console()
 
-# Global state
 current_telemetry = {"lat": None, "on_ground": None}
 log_lines = []
 user_name = "Pilot"
 
-# Webhook Buffer Logic
 landing_buffer = []
 buffer_lock = threading.Lock()
 buffer_timer = None
@@ -121,7 +117,6 @@ def simulator_selector():
 def send_landing_webhook():
     global landing_buffer, buffer_timer
 
-    # Added check for --no-webhook flag
     if args.no_webhook:
         with buffer_lock:
             landing_buffer = []
@@ -156,7 +151,7 @@ def send_landing_webhook():
                 "footer": {
                     "text": "csabolanta.hu"
                 },
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }]
         }
 
@@ -168,12 +163,10 @@ def send_landing_webhook():
         landing_buffer = []
         buffer_timer = None
 
-# --- App Logic ---
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="127.0.0.1")
 parser.add_argument("--logout", action="store_true")
 parser.add_argument("--dev", action="store_true")
-# Added --no-webhook flag
 parser.add_argument("--no-webhook", action="store_true", help="Disable Discord webhook notifications")
 args = parser.parse_args()
 
@@ -190,7 +183,7 @@ if args.logout:
         ok("Logged out successfully.")
     else:
         warn("Not logged in.")
-    exit(0)
+    sys.exit(0)
 
 if os.path.exists(TOKEN_FILE):
     with open(TOKEN_FILE, "r") as f: TOKEN = f.read().strip()
@@ -207,9 +200,14 @@ try:
         user_name = user_res.json().get('name', 'Pilot')
         ok(f"Authenticated as [bold]{user_name}[/bold]")
     else:
-        err("Invalid API Key."); os.remove(TOKEN_FILE); exit(1)
+        err("Invalid API Key.")
+        os.remove(TOKEN_FILE)
+        console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
+        sys.exit(1)
 except Exception as e:
-    err(f"Server error: {e}"); exit(1)
+    err(f"Server error: {e}")
+    console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
+    sys.exit(1)
 
 sim_choice = simulator_selector()
 provider = XPlaneProvider(ip=args.host) if sim_choice == "X-Plane" else MSFSProvider()
@@ -219,7 +217,9 @@ try:
     provider.connect()
     ok("Connected!")
 except Exception as e:
-    err(f"Connection failed: {e}"); exit(1)
+    err(f"Connection failed: {e}")
+    console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
+    sys.exit(1)
 
 callsign = Prompt.ask("[bold magenta]Callsign[/bold magenta]", default="unknown")
 flight_no = Prompt.ask("[bold magenta]Flight Number[/bold magenta]", default="unknown")
@@ -261,7 +261,6 @@ def landing_monitor():
                 
                 log(f"[bold green]LANDING[/bold green] {touchdown_fpm:.0f} FPM")
                 
-                # Add to internal data
                 flight_path_data["landings"].append({
                     "timestamp": round(time.time(), 2), "fpm": round(touchdown_fpm, 2),
                     "g_force": round(g_force, 2),
@@ -279,7 +278,6 @@ def landing_monitor():
 
 threading.Thread(target=landing_monitor, daemon=True).start()
 
-# --- Main Tracking Loop ---
 last_lat, last_lon, last_alt, last_speed = None, None, None, None
 last_log_time = 0
 last_autosave_time = time.time()
@@ -344,7 +342,9 @@ except KeyboardInterrupt:
                 ok("Local file deleted.")
         else:
             err(f"Upload failed: {response.status_code}")
+            console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
     except Exception as e:
         err(f"Upload error: {e}")
+        console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
     
     provider.close()

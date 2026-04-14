@@ -29,9 +29,7 @@ jobs:
       - name: Build EXE
         working-directory: ./XPlaneTracker
         run: |
-          # Use --add-data to bundle the .env file into the EXE
-          # On Windows, the syntax is "source;destination"
-          pyinstaller --onefile --name "CSABOLANTA" --add-data ".env;." main.py
+          pyinstaller --onefile --name "CSABOLANTA" --add-data ".env;." --collect-all SimConnect main.py
 
       - name: Create Release
         id: create_release
