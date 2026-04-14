@@ -247,16 +247,13 @@ def save_flight_to_disk(target_path, data):
 def landing_monitor():
     global current_telemetry, landing_buffer, buffer_timer
     was_on_ground = True
-    fpm_buffer = []
     while True:
         data = current_telemetry
         on_ground = data.get("on_ground")
-        fpm = data.get("fpm")
-        if on_ground is not None and fpm is not None:
-            fpm_buffer.append(fpm)
-            if len(fpm_buffer) > 20: fpm_buffer.pop(0)
+        
+        if on_ground is not None:
             if not was_on_ground and on_ground:
-                touchdown_fpm = min(fpm_buffer) if fpm_buffer else 0
+                touchdown_fpm = data.get("fpm", 0)
                 g_force = data.get('gforce', 0)
                 
                 log(f"[bold green]LANDING[/bold green] {touchdown_fpm:.0f} FPM")
@@ -303,9 +300,23 @@ try:
                 last_autosave_time = now
 
             if lat is not None and lon is not None:
-                if (lat != last_lat or lon != last_lon or alt != last_alt or
-                    speed != last_speed or (now - last_log_time) > 2.0):
-                    
+                should_record = False
+                state_changed = (lat != last_lat or lon != last_lon or alt != last_alt or speed != last_speed)
+
+                if speed == 0:
+                    if state_changed:
+                        should_record = True
+                else:
+                    interval = 0.1
+                    if speed > 350:
+                        interval = 0.5
+                    elif speed >= 250:
+                        interval = 0.25
+                        
+                    if (now - last_log_time) >= interval:
+                        should_record = True
+
+                if should_record:
                     formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                     log(f"[dim]{formatted_time}[/dim] [bold cyan]LAT[/bold cyan]: {lat:.5f} [bold cyan]LON[/bold cyan]: {lon:.5f} [bold yellow]ALT[/bold yellow]: {alt}ft [bold green]GS[/bold green]: {speed}kts")
                     flight_path_data["path"].append([round(now, 2), round(lat, 5), round(lon, 5), alt, speed])
