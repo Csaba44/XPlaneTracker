@@ -20,6 +20,8 @@ services:
     build:
       context: ./XPlaneTrackerAPI
       target: dev
+    ports:
+      - "8081:8080"
     entrypoint: ["/bin/sh", "/docker/entrypoint.sh"]
     command: php-fpm
     volumes:
@@ -36,6 +38,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      redis:
+        condition: service_healthy
   artisan:
     user: "${UID}:${GID}"
     container_name: xtracker_artisan
@@ -50,6 +54,19 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+
+  redis:
+    container_name: xtracker_redis
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data_xtracker:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   nginx:
     container_name: xtracker_nginx
@@ -77,3 +94,4 @@ services:
 
 volumes:
   mysql_data_xtracker:
+  redis_data_xtracker:
