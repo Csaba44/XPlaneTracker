@@ -135,7 +135,7 @@ def send_landing_webhook():
     metadata = flight_path_data.get("metadata", {})
 
     with buffer_lock:
-        title = f"{user_name} Muro phral megérkezett, shavale!"
+        title = f"{user_name} muro phral megérkezett, shavale!"
         
         description_lines = []
         for i, l in enumerate(landing_buffer):
