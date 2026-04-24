@@ -11,12 +11,13 @@ class MSFSProvider(BaseProvider):
         try:
             self.sm = SimConnect()
             self.aq = AircraftRequests(self.sm, _time=20) 
+            logging.info("MSFS SimConnect successfully connected")
         except Exception as e:
+            logging.error(f"MSFS SimConnect Connection failed: {e}")
             raise Exception(f"MSFS SimConnect Connection failed: {e}")
 
     def get_telemetry(self):
         try:
-            # If MSFS is closed, this is where the 0xc00000b0 error hits
             lat = self.aq.get("PLANE_LATITUDE")
             lon = self.aq.get("PLANE_LONGITUDE")
             alt = self.aq.get("PLANE_ALTITUDE")
@@ -34,12 +35,17 @@ class MSFSProvider(BaseProvider):
                 "gforce": gforce,
                 "on_ground": bool(onground == 1) if onground is not None else None
             }
-        except OSError:
-            # This catches the "WinError -1073741648" specifically
+        except OSError as e:
+            logging.warning(f"MSFS Pipe Disconnected OSError: {e}")
             return {"lat": None, "on_ground": None, "error": "Pipe Disconnected"}
-        except Exception:
-            return {"lat": None, "on_ground": None}
+        except Exception as e:
+            logging.error(f"MSFS telemetry extraction error: {e}")
+            return {"lat": None, "on_ground": None, "error": f"Read Error: {e}"}
 
     def close(self):
-        if self.sm:
-            self.sm.exit()
+        try:
+            if self.sm:
+                self.sm.exit()
+                logging.info("MSFS connection gracefully closed")
+        except Exception as e:
+            logging.error(f"Error while closing MSFS connection: {e}")

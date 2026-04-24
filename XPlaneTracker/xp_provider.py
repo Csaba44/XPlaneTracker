@@ -1,5 +1,6 @@
 import time
 import threading
+import logging
 from base_provider import BaseProvider
 from XPlaneConnectX import XPlaneConnectX
 
@@ -28,12 +29,17 @@ class XPlaneProvider(BaseProvider):
         self.monitor_thread = None
 
     def connect(self):
-        self.xpc = XPlaneConnectX(ip=self.ip)
-        self.xpc.subscribeDREFs(self.drefs)
-        
-        self.running = True
-        self.monitor_thread = threading.Thread(target=self._landing_monitor, daemon=True)
-        self.monitor_thread.start()
+        try:
+            self.xpc = XPlaneConnectX(ip=self.ip)
+            self.xpc.subscribeDREFs(self.drefs)
+            
+            self.running = True
+            self.monitor_thread = threading.Thread(target=self._landing_monitor, daemon=True)
+            self.monitor_thread.start()
+            logging.info(f"X-Plane successfully connected via {self.ip}")
+        except Exception as e:
+            logging.error(f"X-Plane connection failed: {e}")
+            raise
 
     def _landing_monitor(self):
         time.sleep(2)
@@ -65,43 +71,51 @@ class XPlaneProvider(BaseProvider):
                                 
                         self.was_on_ground = is_on_ground
                         
-            except Exception:
-                pass
+            except Exception as e:
+                logging.error(f"X-Plane landing monitor thread exception: {e}")
                 
             time.sleep(0.02)
 
     def get_telemetry(self):
-        vals = self.xpc.current_dref_values
-        
-        lat = vals.get("sim/flightmodel/position/latitude", {}).get("value")
-        lon = vals.get("sim/flightmodel/position/longitude", {}).get("value")
-        alt_m = vals.get("sim/flightmodel/position/elevation", {}).get("value")
-        gs_ms = vals.get("sim/flightmodel/position/groundspeed", {}).get("value")
-        raw_fpm = vals.get("sim/flightmodel/position/vh_ind_fpm", {}).get("value")
-        raw_gforce = vals.get("sim/flightmodel2/misc/gforce_normal", {}).get("value")
-        onground_val = vals.get("sim/flightmodel/failures/onground_any", {}).get("value")
+        try:
+            vals = self.xpc.current_dref_values
+            
+            lat = vals.get("sim/flightmodel/position/latitude", {}).get("value")
+            lon = vals.get("sim/flightmodel/position/longitude", {}).get("value")
+            alt_m = vals.get("sim/flightmodel/position/elevation", {}).get("value")
+            gs_ms = vals.get("sim/flightmodel/position/groundspeed", {}).get("value")
+            raw_fpm = vals.get("sim/flightmodel/position/vh_ind_fpm", {}).get("value")
+            raw_gforce = vals.get("sim/flightmodel2/misc/gforce_normal", {}).get("value")
+            onground_val = vals.get("sim/flightmodel/failures/onground_any", {}).get("value")
 
-        is_on_ground = bool(onground_val == 1.0) if onground_val is not None else None
-        
-        with self.lock:
-            if time.time() < self.landing_scan_end_time:
-                reported_fpm = self.touchdown_fpm
-                reported_gforce = self.max_g
-            else:
-                reported_fpm = raw_fpm
-                reported_gforce = raw_gforce
+            is_on_ground = bool(onground_val == 1.0) if onground_val is not None else None
+            
+            with self.lock:
+                if time.time() < self.landing_scan_end_time:
+                    reported_fpm = self.touchdown_fpm
+                    reported_gforce = self.max_g
+                else:
+                    reported_fpm = raw_fpm
+                    reported_gforce = raw_gforce
 
-        return {
-            "lat": lat,
-            "lon": lon,
-            "alt": int(alt_m * 3.28084) if alt_m is not None else None,
-            "gs": int(gs_ms * 1.94384) if gs_ms is not None else None,
-            "fpm": reported_fpm,
-            "gforce": reported_gforce,
-            "on_ground": is_on_ground
-        }
+            return {
+                "lat": lat,
+                "lon": lon,
+                "alt": int(alt_m * 3.28084) if alt_m is not None else None,
+                "gs": int(gs_ms * 1.94384) if gs_ms is not None else None,
+                "fpm": reported_fpm,
+                "gforce": reported_gforce,
+                "on_ground": is_on_ground
+            }
+        except Exception as e:
+            logging.error(f"X-Plane get_telemetry error: {e}")
+            return {"lat": None, "on_ground": None, "error": f"Telemetry Error: {e}"}
 
     def close(self):
-        self.running = False
-        if self.monitor_thread:
-            self.monitor_thread.join(timeout=1.0)
+        try:
+            self.running = False
+            if self.monitor_thread:
+                self.monitor_thread.join(timeout=1.0)
+            logging.info("X-Plane connection gracefully closed")
+        except Exception as e:
+            logging.error(f"Error closing X-Plane connection: {e}")
