@@ -351,14 +351,16 @@ try:
                     should_record = False
                     state_changed = (lat != last_lat or lon != last_lon or alt != last_alt or speed != last_speed)
 
-                    if speed == 0:
+                    safe_speed = speed if speed is not None else 0
+
+                    if safe_speed == 0:
                         if state_changed:
                             should_record = True
                     else:
                         interval = 0.1
-                        if speed > 350:
+                        if safe_speed > 350:
                             interval = 0.5
-                        elif speed >= 250:
+                        elif safe_speed >= 250:
                             interval = 0.25
                             
                         if (now - last_log_time) >= interval:
@@ -366,8 +368,8 @@ try:
 
                     if should_record:
                         formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                        log(f"[dim]{formatted_time}[/dim] [bold cyan]LAT[/bold cyan]: {lat:.5f} [bold cyan]LON[/bold cyan]: {lon:.5f} [bold yellow]ALT[/bold yellow]: {alt}ft [bold green]GS[/bold green]: {speed}kts")
-                        flight_path_data["path"].append([round(now, 2), round(lat, 5), round(lon, 5), alt, speed])
+                        log(f"[dim]{formatted_time}[/dim] [bold cyan]LAT[/bold cyan]: {lat:.5f} [bold cyan]LON[/bold cyan]: {lon:.5f} [bold yellow]ALT[/bold yellow]: {alt}ft [bold green]GS[/bold green]: {safe_speed}kts")
+                        flight_path_data["path"].append([round(now, 2), round(lat, 5), round(lon, 5), alt, safe_speed])
                         
                         last_lat, last_lon, last_alt, last_speed = lat, lon, alt, speed
                         last_log_time = now
