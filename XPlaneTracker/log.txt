@@ -1,2 +1,9 @@
-2026-04-24 21:21:54,138 - INFO - Saved API Key loaded.
-2026-04-24 21:21:54,143 - ERROR - Server error: HTTPConnectionPool(host='xtracker.local', port=5173): Max retries exceeded with url: /api/user (Caused by NewConnectionError("HTTPConnection(host='xtracker.local', port=5173): Failed to establish a new connection:  Connection refused"))
+2026-04-24 23:07:43,050 - INFO - Saved API Key loaded.
+2026-04-24 23:07:43,087 - INFO - Authenticated as Glennie Haley
+2026-04-24 23:07:44,093 - INFO - Connecting to X-Plane...
+2026-04-24 23:07:44,094 - INFO - X-Plane successfully connected via 192.168.100.8
+2026-04-24 23:07:44,094 - INFO - Connected!
+2026-04-24 23:07:52,491 - INFO - Final data saved to flights/flight_TEST1_20260424_230751.json.gz
+2026-04-24 23:07:52,642 - INFO - Upload successful!
+2026-04-24 23:07:53,068 - INFO - Local file deleted.
+2026-04-24 23:07:53,078 - INFO - X-Plane connection gracefully closed

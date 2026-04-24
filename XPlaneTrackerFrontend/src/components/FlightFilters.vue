@@ -1,72 +1,96 @@
 <script setup>
-import { computed } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 
 const props = defineProps({
   searchQuery: String,
-  selectedAirline: String,
-  selectedRegistration: String,
-  selectedFriend: [String, Number],
-  availableAirlines: Array,
-  availableRegistrations: Array,
-  availableFriends: {
-    type: Array,
-    default: () => [],
-  },
-  showFriendFilter: {
-    type: Boolean,
-    default: false,
-  },
   filteredCount: Number,
   totalCount: Number,
 });
 
-const emit = defineEmits(["update:searchQuery", "update:selectedAirline", "update:selectedRegistration", "update:selectedFriend", "clear"]);
+const emit = defineEmits(["update:searchQuery", "clear"]);
 
 const localSearch = computed({
   get: () => props.searchQuery,
   set: (val) => emit("update:searchQuery", val),
 });
 
-const localAirline = computed({
-  get: () => props.selectedAirline,
-  set: (val) => emit("update:selectedAirline", val),
+const isDropdownOpen = ref(false);
+const inputRef = ref(null);
+const dropdownRef = ref(null);
+
+// Available tags based on your requirements
+const availableTags = [
+  { label: "Departure", value: "dep:", icon: "fa-plane-departure" },
+  { label: "Arrival", value: "arr:", icon: "fa-plane-arrival" },
+  { label: "Callsign", value: "callsign:", icon: "fa-tower-observation" },
+  { label: "A/C Type", value: "type:", icon: "fa-plane" },
+  { label: "Registration", value: "reg:", icon: "fa-id-card" },
+];
+
+const insertTag = (tagValue) => {
+  const currentVal = localSearch.value || "";
+  const space = currentVal.length > 0 && !currentVal.endsWith(" ") ? " " : "";
+
+  localSearch.value = `${currentVal}${space}${tagValue}`;
+  isDropdownOpen.value = false;
+
+  if (inputRef.value) {
+    inputRef.value.focus();
+  }
+};
+
+const clearAll = () => {
+  localSearch.value = "";
+  emit("clear");
+};
+
+const handleClickOutside = (event) => {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+    isDropdownOpen.value = false;
+  }
+};
+
+onMounted(() => {
+  document.addEventListener("mousedown", handleClickOutside);
 });
 
-const localRegistration = computed({
-  get: () => props.selectedRegistration,
-  set: (val) => emit("update:selectedRegistration", val),
-});
-
-const localFriend = computed({
-  get: () => props.selectedFriend,
-  set: (val) => emit("update:selectedFriend", val),
+onUnmounted(() => {
+  document.removeEventListener("mousedown", handleClickOutside);
 });
 </script>
 
 <template>
   <div class="bg-flight-card border border-flight-border rounded-xl p-3 space-y-3 shadow-lg">
-    <div class="relative">
-      <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-500 text-xs"></i>
-      <input v-model="localSearch" type="text" placeholder="Keresés..." class="w-full bg-flight-bg border border-flight-border rounded-lg pl-8 pr-3 py-2 text-xs text-white focus:outline-none focus:border-flight-accent transition-colors placeholder-slate-600" />
-    </div>
+    <div class="flex items-center space-x-2">
+      <div ref="dropdownRef" class="relative flex-grow flex items-center bg-flight-bg border border-flight-border rounded-lg transition-colors focus-within:border-flight-accent">
+        <div class="pl-3 pr-2 text-slate-500">
+          <i class="fa-solid fa-magnifying-glass text-xs"></i>
+        </div>
 
-    <div class="flex space-x-2">
-      <select v-if="showFriendFilter" v-model="localFriend" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-        <option value="">Sel. Pilot</option>
-        <option v-for="friend in availableFriends" :key="friend.id" :value="friend.id">{{ friend.name }}</option>
-      </select>
+        <input ref="inputRef" v-model="localSearch" type="text" placeholder="Keresés globálisan, vagy címkékkel (pl. dep:LHBP callsign:RYR)..." class="w-full bg-transparent py-2.5 text-xs text-white focus:outline-none placeholder-slate-600" @keydown.esc="isDropdownOpen = false" />
 
-      <select v-model="localAirline" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-        <option value="">Sel. airline</option>
-        <option v-for="airline in availableAirlines" :key="airline" :value="airline">{{ airline }}</option>
-      </select>
+        <button @click.prevent="isDropdownOpen = !isDropdownOpen" class="px-3 text-slate-400 hover:text-flight-accent transition-colors border-l border-flight-border/50 text-xs flex items-center space-x-1 h-full" title="Szűrő címke hozzáadása">
+          <i class="fa-solid fa-tags"></i>
+          <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i>
+        </button>
 
-      <select v-model="localRegistration" class="flex-grow w-1/3 bg-flight-bg border border-flight-border rounded-lg px-2 py-2 text-xs text-slate-300 focus:outline-none focus:border-flight-accent transition-colors cursor-pointer">
-        <option value="">Sel. Reg</option>
-        <option v-for="reg in availableRegistrations" :key="reg" :value="reg">{{ reg }}</option>
-      </select>
+        <div v-if="isDropdownOpen" class="absolute right-0 top-full mt-2 w-56 bg-flight-card border border-flight-border rounded-lg shadow-xl z-50 overflow-hidden">
+          <div class="px-3 py-2 border-b border-flight-border/50 bg-black/20">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Elérhető Címkék</span>
+          </div>
+          <div class="flex flex-col py-1">
+            <button v-for="tag in availableTags" :key="tag.value" @click.prevent="insertTag(tag.value)" class="flex items-center px-3 py-2 text-xs text-left text-slate-300 hover:bg-flight-accent/10 hover:text-flight-accent transition-colors">
+              <i :class="['fa-solid', tag.icon, 'w-5 text-center mr-2 opacity-70']"></i>
+              <span class="flex-grow">{{ tag.label }}</span>
+              <span class="text-[10px] font-mono bg-white/5 border border-white/10 px-1.5 py-0.5 rounded text-slate-400">
+                {{ tag.value }}
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
 
-      <button v-if="searchQuery || selectedAirline || selectedRegistration || selectedFriend" @click="$emit('clear')" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 px-3 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer min-w-[36px]" title="Clear Filters">
+      <button v-if="localSearch" @click="clearAll" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 px-3 py-2.5 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer min-w-[40px]" title="Keresés törlése">
         <i class="fa-solid fa-filter-circle-xmark"></i>
       </button>
     </div>

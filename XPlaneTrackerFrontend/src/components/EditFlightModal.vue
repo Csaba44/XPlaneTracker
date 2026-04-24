@@ -13,6 +13,7 @@ const form = ref({
   callsign: "",
   flight_number: "",
   airline: "",
+  aircraft_type: "",
   aircraft_registration: "",
   dep_icao: "",
   arr_icao: "",
@@ -27,6 +28,7 @@ watch(
         callsign: props.initialData.callsign || "",
         flight_number: props.initialData.flight_number || "",
         airline: props.initialData.airline || "",
+        aircraft_type: props.initialData.aircraft_type || "",
         aircraft_registration: props.initialData.aircraft_registration || "",
         dep_icao: props.initialData.dep_icao || "",
         arr_icao: props.initialData.arr_icao || "",
@@ -57,10 +59,15 @@ const handleSubmit = () => {
           </div>
         </div>
 
+        <div>
+          <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Airline</label>
+          <input v-model="form.airline" type="text" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+        </div>
+
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Airline</label>
-            <input v-model="form.airline" type="text" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Aircraft Type (ICAO)</label>
+            <input v-model="form.aircraft_type" maxlength="4" type="text" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors uppercase" />
           </div>
           <div>
             <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Aircraft Reg</label>
