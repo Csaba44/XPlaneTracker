@@ -181,7 +181,8 @@ def send_landing_webhook():
                 "fields": [
                     {"name": "Callsign", "value": metadata.get("callsign", "N/A"), "inline": True},
                     {"name": "Flight Number", "value": metadata.get("flight_number", "N/A"), "inline": True},
-                    {"name": "Registration", "value": metadata.get("aircraft_registration", "N/A"), "inline": True},
+                    {"name": "Registration", "value": metadata.get("aircraft_registration") or "N/A", "inline": True},
+                    {"name": "Aircraft Type", "value": metadata.get("aircraft_type", "N/A"), "inline": True},
                     {"name": "Simulator", "value": metadata.get("simulator", "N/A"), "inline": True},
                 ],
                 "footer": {
@@ -263,6 +264,7 @@ try:
     flight_no = Prompt.ask("[bold magenta]Flight Number[/bold magenta]", default="unknown")
     airline = Prompt.ask("[bold magenta]Airline[/bold magenta]", default="unknown")
     reg = Prompt.ask("[bold magenta]Registration[/bold magenta]", default="unknown")
+    ac_type = Prompt.ask("[bold magenta]Aircraft Type[/bold magenta]", default="unknown")
 
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_filename = f"flights/flight_{callsign}_{timestamp_str}"
@@ -275,7 +277,7 @@ try:
     flight_path_data = {
         "metadata": {
             "callsign": callsign, "flight_number": flight_no, "airline": airline,
-            "aircraft_registration": reg, "simulator": sim_choice,
+            "aircraft_registration": reg, "aircraft_type": ac_type, "simulator": sim_choice,
             "start_time": datetime.now().isoformat(),
             "columns": ["timestamp", "lat", "lon", "alt", "speed"]
         },
@@ -397,7 +399,14 @@ try:
             with console.status("[bold cyan]Uploading flight...[/bold cyan]"):
                 with open(final_filename, 'rb') as f:
                     files = {'flight_file': (os.path.basename(final_filename), f, 'application/gzip')}
-                    response = requests.post(API_FLIGHTS_URL, files=files, headers=auth_headers)
+                    
+                    upload_data = {}
+                    if reg:
+                        upload_data['aircraft_registration'] = reg
+                    if ac_type:
+                        upload_data['aircraft_type'] = ac_type
+                        
+                    response = requests.post(API_FLIGHTS_URL, files=files, data=upload_data, headers=auth_headers)
 
             if response.status_code == 201:
                 ok("Upload successful!")

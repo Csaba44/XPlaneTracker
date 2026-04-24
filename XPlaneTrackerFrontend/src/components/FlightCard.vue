@@ -24,6 +24,9 @@ const emit = defineEmits(["click", "delete", "edit", "share"]);
           <i class="fa-solid fa-plane text-[9px] text-flight-accent"></i>
           <span class="text-[11px] font-black text-slate-300 tracking-widest">{{ flight.arr_icao || "----" }}</span>
         </div>
+        <span v-if="flight.aircraft_type" class="text-[9px] text-slate-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded font-mono uppercase w-fit mt-1.5">
+          {{ flight.aircraft_type }}
+        </span>
       </div>
       <div class="flex flex-col items-end space-y-1">
         <span class="text-[10px] bg-flight-bg text-flight-accent border border-flight-accent/30 px-2 py-1 rounded font-mono">

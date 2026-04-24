@@ -12,6 +12,7 @@ class Flight extends Model
         'callsign',
         'flight_number',
         'aircraft_registration',
+        'aircraft_type',
         'airline',
         'dep_icao',
         'arr_icao',

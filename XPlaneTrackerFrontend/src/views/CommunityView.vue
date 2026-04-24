@@ -20,49 +20,59 @@ const currentFlightData = ref(null);
 const generatedApiKey = ref(null);
 
 const searchQuery = ref("");
-const selectedAirline = ref("");
-const selectedRegistration = ref("");
-const selectedFriend = ref("");
 
 const isProfileModalOpen = ref(false);
 const isUploading = ref(false);
 
-const availableAirlines = computed(() => {
-  const airlines = flights.value.map((f) => f.airline).filter(Boolean);
-  return [...new Set(airlines)].sort();
-});
-
-const availableRegistrations = computed(() => {
-  const registrations = flights.value.map((f) => f.aircraft_registration).filter(Boolean);
-  return [...new Set(registrations)].sort();
-});
-
-const availableFriends = computed(() => {
-  const friendsMap = new Map();
-  flights.value.forEach((f) => {
-    if (f.user) {
-      friendsMap.set(f.user.id, f.user);
-    }
-  });
-  return Array.from(friendsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-});
-
 const filteredFlights = computed(() => {
-  return flights.value.filter((flight) => {
-    const matchesSearch = !searchQuery.value || flight.callsign.toLowerCase().includes(searchQuery.value.toLowerCase()) || flight.flight_number.toLowerCase().includes(searchQuery.value.toLowerCase()) || flight.airline.toLowerCase().includes(searchQuery.value.toLowerCase());
-    const matchesAirline = !selectedAirline.value || flight.airline === selectedAirline.value;
-    const matchesRegistration = !selectedRegistration.value || flight.aircraft_registration === selectedRegistration.value;
-    const matchesFriend = !selectedFriend.value || flight.user_id === selectedFriend.value;
+  if (!searchQuery.value || searchQuery.value.trim() === "") {
+    return flights.value;
+  }
 
-    return matchesSearch && matchesAirline && matchesRegistration && matchesFriend;
+  const queryStr = searchQuery.value.toLowerCase();
+
+  const tagRegex = /(dep|arr|callsign|type|reg):([^\s]+)/g;
+  const tags = {
+    dep: [],
+    arr: [],
+    callsign: [],
+    type: [],
+    reg: [],
+  };
+
+  let hasTags = false;
+  const globalSearchText = queryStr
+    .replace(tagRegex, (fullMatch, key, value) => {
+      if (tags[key]) {
+        tags[key].push(value);
+        hasTags = true;
+      }
+      return "";
+    })
+    .trim();
+
+  return flights.value.filter((flight) => {
+    if (hasTags) {
+      if (tags.dep.length > 0 && !tags.dep.some((val) => flight.dep_icao?.toLowerCase() === val)) return false;
+      if (tags.arr.length > 0 && !tags.arr.some((val) => flight.arr_icao?.toLowerCase() === val)) return false;
+      if (tags.callsign.length > 0 && !tags.callsign.some((val) => flight.callsign?.toLowerCase().includes(val))) return false;
+      if (tags.type.length > 0 && !tags.type.some((val) => flight.aircraft_type?.toLowerCase().includes(val))) return false;
+      if (tags.reg.length > 0 && !tags.reg.some((val) => flight.aircraft_registration?.toLowerCase().includes(val))) return false;
+    }
+
+    if (globalSearchText) {
+      const gSearch = globalSearchText;
+      const matchesGlobal = flight.callsign?.toLowerCase().includes(gSearch) || flight.flight_number?.toLowerCase().includes(gSearch) || flight.airline?.toLowerCase().includes(gSearch) || flight.dep_icao?.toLowerCase().includes(gSearch) || flight.arr_icao?.toLowerCase().includes(gSearch) || flight.user?.name?.toLowerCase().includes(gSearch);
+
+      if (!matchesGlobal) return false;
+    }
+
+    return true;
   });
 });
 
 const clearFilters = () => {
   searchQuery.value = "";
-  selectedAirline.value = "";
-  selectedRegistration.value = "";
-  selectedFriend.value = "";
 };
 
 const fetchFlights = async () => {
@@ -191,7 +201,7 @@ onMounted(async () => {
       </div>
 
       <div class="px-4 pb-4">
-        <FlightFilters v-model:searchQuery="searchQuery" v-model:selectedAirline="selectedAirline" v-model:selectedRegistration="selectedRegistration" v-model:selectedFriend="selectedFriend" :availableAirlines="availableAirlines" :availableRegistrations="availableRegistrations" :availableFriends="availableFriends" :showFriendFilter="true" :filteredCount="filteredFlights.length" :totalCount="flights.length" @clear="clearFilters" />
+        <FlightFilters v-model:searchQuery="searchQuery" :filteredCount="filteredFlights.length" :totalCount="flights.length" @clear="clearFilters" />
       </div>
 
       <div class="flex-grow overflow-y-auto px-4 pb-4 space-y-3">

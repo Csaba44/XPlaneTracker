@@ -66,7 +66,6 @@ class FlightController extends Controller
         return $closestIcao;
     }
 
-    // Fetch flights belonging to accepted friends
     public function friendsFlights()
     {
         $user = Auth::user();
@@ -79,10 +78,13 @@ class FlightController extends Controller
 
         return response()->json($flights);
     }
+
     public function store(Request $request)
     {
         $request->validate([
-            'flight_file' => 'required|file'
+            'flight_file' => 'required|file',
+            'aircraft_registration' => 'nullable|string|max:255',
+            'aircraft_type' => 'nullable|string|max:255'
         ]);
 
         $file = $request->file('flight_file');
@@ -107,7 +109,8 @@ class FlightController extends Controller
             'callsign' => $data['metadata']['callsign'] ?? 'unknown',
             'flight_number' => $data['metadata']['flight_number'] ?? 'unknown',
             'airline' => $data['metadata']['airline'] ?? 'unknown',
-            'aircraft_registration' => $data['metadata']['aircraft_registration'] ?? null,
+            'aircraft_registration' => $request->input('aircraft_registration') ?? $data['metadata']['aircraft_registration'] ?? null,
+            'aircraft_type' => $request->input('aircraft_type') ?? $data['metadata']['aircraft_type'] ?? null,
             'dep_icao' => $dep_icao,
             'arr_icao' => $arr_icao,
             'start_time' => $data['metadata']['start_time'] ?? null,
@@ -144,6 +147,7 @@ class FlightController extends Controller
             'flight_number' => 'nullable|string|max:255',
             'airline' => 'nullable|string|max:255',
             'aircraft_registration' => 'nullable|string|max:255',
+            'aircraft_type' => 'nullable|string|max:255',
             'dep_icao' => 'nullable|alpha_num|max:10',
             'arr_icao' => 'nullable|alpha_num|max:10',
             'start_time' => 'nullable|date'
