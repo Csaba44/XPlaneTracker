@@ -135,6 +135,21 @@ class FlightController extends Controller
             ->latest()
             ->get();
 
+        $registrations = $flights
+            ->pluck('aircraft_registration')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $photos = $this->getPhotosForRegistrations($registrations);
+
+        $flights = $flights->map(function ($flight) use ($photos) {
+            $reg = $flight->aircraft_registration;
+            $flight->photo = $reg ? ($photos[$reg] ?? null) : null;
+            return $flight;
+        });
+
         return response()->json($flights);
     }
 

@@ -23,8 +23,9 @@ const loadSharedFlight = async () => {
   try {
     const id = route.params.id;
     const response = await api.get(`/api/flights/${id}`);
-    fullFlightData.value = response.data.data; // path data for the map
-    flightData.value = response.data.data?.metadata; // sidebar metadata
+    const flightPath = response.data.data ?? response.data;
+    fullFlightData.value = flightPath;
+    flightData.value = flightPath?.metadata;
   } catch (error) {
     console.error(error);
     isError.value = true;

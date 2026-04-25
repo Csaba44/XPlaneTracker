@@ -95,7 +95,9 @@ const viewFlight = async (id) => {
   selectedFlightId.value = id;
   try {
     const response = await api.get(`/api/flights/${id}`);
-    currentFlightData.value = response.data.data;
+    // New shape: { flight, file_url, data }
+    // Old shape: { metadata, path, landings, ... } (raw flight data)
+    currentFlightData.value = response.data.data ?? response.data;
   } catch (error) {
     console.error(error);
   }
