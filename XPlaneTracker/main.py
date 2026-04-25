@@ -230,7 +230,7 @@ def fetch_simbrief_data(pilot_id):
                 return {
                     'callsign': callsign,
                     'full_flight_number': full_flight_number,
-                    'airline': 'unknown',
+                    'airline': raw_airline if raw_airline else 'unknown',
                     'ac_type': ac.get('icaocode', 'unknown'),
                     'reg': ac.get('reg', ''),
                 }
@@ -240,6 +240,24 @@ def fetch_simbrief_data(pilot_id):
     except Exception as e:
         warn(f"Failed to fetch SimBrief data: {e}")
         return {}
+
+def get_airline_name(code):
+    if not code or code.lower() == "unknown":
+        return "unknown"
+        
+    code = code.strip().upper()
+    url = "https://raw.githubusercontent.com/npow/airline-codes/master/airlines.json"
+    
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            airlines = response.json()
+            for airline in airlines:
+                if airline.get("iata") == code or airline.get("icao") == code:
+                    return airline.get("name")
+        return "unknown"
+    except Exception as e:
+        return code
 
 try:
     parser = argparse.ArgumentParser()
@@ -304,7 +322,7 @@ try:
         console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
         sys.exit(1)
 
-    # --- SIMBRIEF LOGIC ---
+    # --- SIMBRIEF & AIRLINE LOGIC ---
     saved_sb_id = ""
     if os.path.exists(SIMBRIEF_FILE):
         with open(SIMBRIEF_FILE, "r") as f: 
@@ -323,9 +341,16 @@ try:
             
     sb_data = fetch_simbrief_data(sb_id)
     
+    # Translate the raw airline code to a full name
+    raw_airline_code = sb_data.get('airline', 'unknown')
+    full_airline_name = "unknown"
+    if raw_airline_code != 'unknown':
+        with console.status("[bold cyan]Translating Airline Code...[/bold cyan]"):
+            full_airline_name = get_airline_name(raw_airline_code)
+    
     callsign = Prompt.ask("[bold magenta]Callsign[/bold magenta]", default=sb_data.get('callsign', 'unknown'))
     flight_no = Prompt.ask("[bold magenta]Flight Number[/bold magenta]", default=sb_data.get('full_flight_number', 'unknown'))
-    airline = Prompt.ask("[bold magenta]Airline[/bold magenta]", default="unknown")
+    airline = Prompt.ask("[bold magenta]Airline[/bold magenta]", default=full_airline_name)
     reg = Prompt.ask("[bold magenta]Registration[/bold magenta]", default=sb_data.get('reg', ''))
     ac_type = Prompt.ask("[bold magenta]Aircraft Type[/bold magenta]", default=sb_data.get('ac_type', 'unknown'))
 
