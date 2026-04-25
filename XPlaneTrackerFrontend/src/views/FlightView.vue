@@ -78,6 +78,11 @@ const clearFilters = () => {
   searchQuery.value = "";
 };
 
+// Handler emitted by FlightMap when a connection line is clicked
+const handleSetSearchQuery = (query) => {
+  searchQuery.value = query;
+};
+
 const fetchFlights = async () => {
   try {
     const response = await api.get("/api/flights");
@@ -266,7 +271,7 @@ onMounted(async () => {
       </div>
     </aside>
 
-    <FlightMap :flightData="currentFlightData" />
+    <FlightMap :flightData="currentFlightData" :flights="flights" @setSearchQuery="handleSetSearchQuery" />
 
     <ProfileModal :isOpen="isProfileModalOpen" :initialData="authStore.user" @close="isProfileModalOpen = false" @save="saveProfile" />
 

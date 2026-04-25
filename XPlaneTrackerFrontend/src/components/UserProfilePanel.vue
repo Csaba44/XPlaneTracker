@@ -35,6 +35,9 @@ const handleFileChange = (event) => {
         </span>
       </div>
       <div class="flex space-x-1">
+        <a target="_blank" href="https://github.com/Csaba44/XPlaneTracker/releases" class="bg-flight-bg hover:bg-flight-accent/20 text-slate-400 hover:text-flight-accent transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Download Csabolanta">
+          <i class="fa-solid fa-download text-xs"></i>
+        </a>
         <button @click="$emit('openProfile')" class="bg-flight-bg hover:bg-flight-accent/20 text-slate-400 hover:text-flight-accent transition-colors p-2 rounded-md cursor-pointer flex items-center justify-center" title="Edit Profile">
           <i class="fa-solid fa-gear text-xs"></i>
         </button>
