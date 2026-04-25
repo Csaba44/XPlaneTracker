@@ -10,39 +10,57 @@ class LeaderboardController extends Controller
 {
     public function index()
     {
-        // Fetch flights, but select 'file_path' instead of the non-existent 'path_data'
+        // Fetch flights from ONLY the last 30 days
         $flights = Flight::with('user:id,name')
-            ->whereNotNull('arr_icao')
-            ->where('arr_icao', '!=', '')
+            ->where('created_at', '>=', now()->subDays(30))
             ->get(['id', 'user_id', 'arr_icao', 'aircraft_type', 'file_path']);
 
         $airports = [];
+        $userHours = [];
         $disk = Storage::disk('public');
 
         foreach ($flights as $flight) {
-            // Check if the flight file actually exists on the disk
             if (!$flight->file_path || !$disk->exists($flight->file_path)) {
                 continue;
             }
 
             try {
-                // Read and decompress the .gz file to get the landings
                 $content = gzdecode($disk->get($flight->file_path));
                 $data = json_decode($content, true);
                 $landings = $data['landings'] ?? [];
+                $path = $data['path'] ?? [];
             } catch (\Exception $e) {
-                // Skip if the file is corrupted or decoding fails
                 continue;
             }
 
-            if (empty($landings)) continue;
+            // --- Calculate Flight Duration for "Most Flown Hours" ---
+            if (!empty($path) && count($path) > 1) {
+                $firstPoint = $path[0];
+                $lastPoint = end($path);
 
-            // Get the best FPM (closest to 0) for this specific flight
+                // Timestamp is index 0 in the path array: [timestamp, lat, lon, alt, speed]
+                $durationSeconds = $lastPoint[0] - $firstPoint[0];
+
+                if ($durationSeconds > 0) {
+                    $userId = $flight->user_id;
+                    if (!isset($userHours[$userId])) {
+                        $userHours[$userId] = [
+                            'user_id' => $userId,
+                            'user_name' => $flight->user->name ?? 'Unknown',
+                            'total_seconds' => 0
+                        ];
+                    }
+                    $userHours[$userId]['total_seconds'] += $durationSeconds;
+                }
+            }
+
+            // --- Calculate Top Landings ---
+            if (empty($landings) || empty($flight->arr_icao)) continue;
+
             $bestFpmLanding = collect($landings)->sortBy(function ($l) {
                 return abs($l['fpm'] ?? 99999);
             })->first();
 
-            // Get the best G-Force (closest to 1.0) for this specific flight
             $bestGLanding = collect($landings)->sortBy(function ($l) {
                 return $l['g_force'] ?? 99;
             })->first();
@@ -57,7 +75,7 @@ class LeaderboardController extends Controller
             ];
         }
 
-        $leaderboard = [];
+        $airportLeaderboards = [];
 
         foreach ($airports as $icao => $airportFlights) {
             // Rule: at least 2 unique users must have flown here
@@ -76,7 +94,7 @@ class LeaderboardController extends Controller
                     ->take(5)
                     ->values();
 
-                $leaderboard[] = [
+                $airportLeaderboards[] = [
                     'icao' => strtoupper($icao),
                     'top_fpm' => $topFpm,
                     'top_g' => $topG,
@@ -84,7 +102,15 @@ class LeaderboardController extends Controller
             }
         }
 
-        // Return alphabetically sorted by airport ICAO
-        return response()->json(collect($leaderboard)->sortBy('icao')->values());
+        // Format the Most Flown Hours output
+        $topHours = collect($userHours)->map(function ($u) {
+            $u['hours'] = round($u['total_seconds'] / 3600, 2);
+            return $u;
+        })->sortByDesc('total_seconds')->take(10)->values(); // Top 10 pilots
+
+        return response()->json([
+            'airports' => collect($airportLeaderboards)->sortBy('icao')->values(),
+            'top_hours' => $topHours
+        ]);
     }
 }
