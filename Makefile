@@ -11,6 +11,7 @@ DOCKER_USER=csabi44
 BACKEND_IMAGE=$(DOCKER_USER)/xtracker-backend
 FRONTEND_IMAGE=$(DOCKER_USER)/xtracker-frontend
 WEBSOCKET_IMAGE=$(DOCKER_USER)/xtracker-websocket
+JETPHOTOS_IMAGE=$(DOCKER_USER)/xtracker-jetphotos
 
 # -------------------------
 # HELP
@@ -28,9 +29,9 @@ help:
 	@echo "  make dev-down-v     Stop dev stack and REMOVE volumes (DB reset)"
 	@echo ""
 	@echo "MIGRATE (DEV):"
-	@echo "  make migrate             Run migrations"
-	@echo "  make migrate-seed        Run migrations + seed"
-	@echo "  make migrate-fresh       Drop all tables and re-run migrations"
+	@echo "  make migrate        Run migrations"
+	@echo "  make migrate-seed   Run migrations + seed"
+	@echo "  make migrate-fresh  Drop all tables and re-run migrations"
 	@echo "  make migrate-fresh-seed  Drop all tables, re-run migrations + seed"
 	@echo ""
 	@echo "BUILD:"
@@ -52,7 +53,7 @@ help:
 	@echo "UTILS:"
 	@echo "  make logs           Tail prod logs"
 	@echo "  make ps             Show running containers"
-	@echo "  make prettier             Run prettier formatting on frontend and websocket codebase"
+	@echo "  make prettier       Run prettier formatting on frontend and websocket codebase"
 	@echo ""
 
 # -------------------------
@@ -111,10 +112,15 @@ build:
 	docker build -t $(FRONTEND_IMAGE):$(VERSION) --target prod ./XPlaneTrackerFrontend
 	docker tag $(FRONTEND_IMAGE):$(VERSION) $(FRONTEND_IMAGE):latest
 
+	@echo "Building JETPHOTOS WORKER image ($(VERSION))..."
+	docker build -t $(JETPHOTOS_IMAGE):$(VERSION) ./jetphotos-worker
+	docker tag $(JETPHOTOS_IMAGE):$(VERSION) $(JETPHOTOS_IMAGE):latest
+
 	@echo ""
 	@echo "Images built:"
 	@echo "  $(BACKEND_IMAGE):$(VERSION)"
 	@echo "  $(FRONTEND_IMAGE):$(VERSION)"
+	@echo "  $(JETPHOTOS_IMAGE):$(VERSION)"
 	@echo ""
 
 # -------------------------
@@ -130,6 +136,10 @@ push:
 	docker push $(FRONTEND_IMAGE):$(VERSION)
 	docker push $(FRONTEND_IMAGE):latest
 
+	@echo "Pushing JETPHOTOS WORKER image..."
+	docker push $(JETPHOTOS_IMAGE):$(VERSION)
+	docker push $(JETPHOTOS_IMAGE):latest
+
 	@echo "Images pushed to Docker Hub."
 
 # -------------------------
@@ -141,6 +151,7 @@ release: build push
 	@echo "Release completed:"
 	@echo "  $(BACKEND_IMAGE):$(VERSION)"
 	@echo "  $(FRONTEND_IMAGE):$(VERSION)"
+	@echo "  $(JETPHOTOS_IMAGE):$(VERSION)"
 	@echo ""
 
 # -------------------------
