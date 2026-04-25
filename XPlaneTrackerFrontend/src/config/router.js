@@ -7,6 +7,7 @@ import AdminView from '../views/AdminView.vue';
 import FriendsView from '../views/FriendsView.vue';
 import CommunityView from '../views/CommunityView.vue';
 import { useAuthStore } from '../stores/auth';
+import LeaderboardView from '../views/LeaderboardView.vue';
 
 const routes = [
   {
@@ -35,6 +36,12 @@ const routes = [
     path: '/friends',
     name: 'friends',
     component: FriendsView,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/leaderboard',
+    name: 'leaderboard',
+    component: LeaderboardView,
     meta: { requiresAuth: true }
   },
   {

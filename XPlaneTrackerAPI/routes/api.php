@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FlightController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\FriendController;
+use App\Http\Controllers\LeaderboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RunwayController;
 
@@ -38,6 +39,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/friends', [FriendController::class, 'store']);
     Route::patch('/friends/{friendId}/accept', [FriendController::class, 'accept']);
     Route::delete('/friends/{friendId}', [FriendController::class, 'destroy']);
+
+    // Add this to your API routes
+    Route::get('/leaderboard', [LeaderboardController::class, 'index']);
 });
 
 Route::get('/flights/{flight}', [FlightController::class, 'show']);
