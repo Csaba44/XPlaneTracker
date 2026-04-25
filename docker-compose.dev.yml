@@ -74,6 +74,14 @@ services:
     volumes:
       - ./XPlaneTrackerFrontend:/app
       - /app/node_modules
+  jetphotos-worker:
+    container_name: xtracker_jetphotos
+    platform: linux/amd64
+    build:
+      context: ./jetphotos-worker
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
 
 volumes:
   mysql_data_xtracker:

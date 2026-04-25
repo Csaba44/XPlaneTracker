@@ -46,6 +46,9 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+  jetphotos-worker:
+    image: csabi44/xtracker-jetphotos:latest
+    restart: unless-stopped
 volumes:
   mysql_data_xtracker:
   xtracker_storage:

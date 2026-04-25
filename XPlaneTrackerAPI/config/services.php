@@ -35,4 +35,8 @@ return [
         ],
     ],
 
+    'jetphotos' => [
+        'worker_url' => env('JETPHOTOS_WORKER_URL', 'http://jetphotos-worker:8787'),
+    ],
+
 ];

@@ -17,54 +17,114 @@ class FlightController extends Controller
             ->latest()
             ->get();
 
+        // Collect all unique registrations that exist
+        $registrations = $flights
+            ->pluck('aircraft_registration')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        // Fetch all photos in one request, cached per registration
+        $photos = $this->getPhotosForRegistrations($registrations);
+
+        // Attach photo data to each flight
+        $flights = $flights->map(function ($flight) use ($photos) {
+            $reg = $flight->aircraft_registration;
+            $flight->photo = $reg ? ($photos[$reg] ?? null) : null;
+            return $flight;
+        });
+
         return response()->json($flights);
     }
 
-    private function getDistanceInMeters($lat1, $lon1, $lat2, $lon2)
+    public function show(Flight $flight)
     {
-        $earthRadius = 6371000;
-        $latDelta = deg2rad($lat2 - $lat1);
-        $lonDelta = deg2rad($lon2 - $lon1);
+        $disk = Storage::disk('public');
 
-        $angle = 2 * asin(sqrt(pow(sin($latDelta / 2), 2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * pow(sin($lonDelta / 2), 2)));
+        if (!$disk->exists($flight->file_path)) {
+            return response()->json(['error' => 'File not found'], 404);
+        }
 
-        return $angle * $earthRadius;
+        // Attach photo for single flight too
+        if ($flight->aircraft_registration) {
+            $photos = $this->getPhotosForRegistrations([$flight->aircraft_registration]);
+            $flight->photo = $photos[$flight->aircraft_registration] ?? null;
+        } else {
+            $flight->photo = null;
+        }
+
+        $absolutePath = $disk->path($flight->file_path);
+
+        // Return both flight data (with photo) and the file
+        // Since original show() returned the raw file, we now return JSON with flight + signed URL
+        return response()->json([
+            'flight' => $flight,
+            'file_url' => Storage::disk('public')->url($flight->file_path),
+        ]);
     }
 
-    private function getNearestIcao($lat, $lon)
+    /**
+     * Fetch photos for multiple registrations from the worker.
+     * Results are cached per-registration for 24 hours in the DB.
+     *
+     * @param  string[]  $registrations
+     * @return array<string, mixed>  keyed by registration
+     */
+    private function getPhotosForRegistrations(array $registrations): array
     {
-        if (!$lat || !$lon) return null;
+        if (empty($registrations)) return [];
 
-        if (!Storage::exists('airports.json')) {
-            $response = Http::get('https://raw.githubusercontent.com/mwgg/Airports/master/airports.json');
+        $photos = [];
+        $toFetch = [];
 
-            if ($response->successful()) {
-                Storage::put('airports.json', $response->body());
+        // Check cache first for each registration
+        foreach ($registrations as $reg) {
+            $cacheKey = 'jetphotos_' . strtoupper($reg);
+            $cached = Cache::get($cacheKey);
+
+            if ($cached !== null) {
+                $photos[$reg] = $cached;
             } else {
-                return null;
+                $toFetch[] = $reg;
             }
         }
 
-        $airports = json_decode(Storage::get('airports.json'), true);
+        // Fetch all uncached registrations in a single worker request
+        if (!empty($toFetch)) {
+            $workerUrl = rtrim(config('services.jetphotos.worker_url'), '/');
+            $regsParam = implode(',', $toFetch);
 
-        if (empty($airports)) return null;
+            try {
+                $response = Http::timeout(15)
+                    ->get("{$workerUrl}/", [
+                        'registrations' => $regsParam,
+                    ]);
 
-        $closestIcao = null;
-        $minDistance = 5000;
+                if ($response->successful()) {
+                    $data = $response->json();
 
-        foreach ($airports as $airport) {
-            if (empty($airport['icao']) || empty($airport['lat']) || empty($airport['lon'])) continue;
+                    foreach ($toFetch as $reg) {
+                        $photoData = $data[$reg] ?? null;
+                        $cacheKey = 'jetphotos_' . strtoupper($reg);
 
-            $distance = $this->getDistanceInMeters($lat, $lon, $airport['lat'], $airport['lon']);
-
-            if ($distance < $minDistance) {
-                $minDistance = $distance;
-                $closestIcao = $airport['icao'];
+                        // Cache for 24h — aircraft photos rarely change
+                        Cache::put($cacheKey, $photoData, now()->addHours(24));
+                        $photos[$reg] = $photoData;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Worker unreachable — return nulls, don't crash the response
+                foreach ($toFetch as $reg) {
+                    $photos[$reg] = null;
+                }
             }
         }
 
-        return $closestIcao;
+        return $photos;
     }
+
+    // --- All other methods unchanged below ---
 
     public function friendsFlights()
     {
@@ -120,22 +180,6 @@ class FlightController extends Controller
         return response()->json($flight, 201);
     }
 
-    public function show(Flight $flight)
-    {
-        $disk = Storage::disk('public');
-
-        if (!$disk->exists($flight->file_path)) {
-            return response()->json(['error' => 'File not found'], 404);
-        }
-
-        $absolutePath = $disk->path($flight->file_path);
-
-        return response()->file($absolutePath, [
-            'Content-Type' => 'application/json',
-            'Content-Encoding' => 'gzip',
-        ]);
-    }
-
     public function update(Request $request, Flight $flight)
     {
         if ($flight->user_id !== Auth::id()) {
@@ -175,5 +219,45 @@ class FlightController extends Controller
         $flight->delete();
 
         return response()->json(null, 204);
+    }
+
+    private function getDistanceInMeters($lat1, $lon1, $lat2, $lon2)
+    {
+        $earthRadius = 6371000;
+        $latDelta = deg2rad($lat2 - $lat1);
+        $lonDelta = deg2rad($lon2 - $lon1);
+        $angle = 2 * asin(sqrt(pow(sin($latDelta / 2), 2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * pow(sin($lonDelta / 2), 2)));
+        return $angle * $earthRadius;
+    }
+
+    private function getNearestIcao($lat, $lon)
+    {
+        if (!$lat || !$lon) return null;
+
+        if (!Storage::exists('airports.json')) {
+            $response = Http::get('https://raw.githubusercontent.com/mwgg/Airports/master/airports.json');
+            if ($response->successful()) {
+                Storage::put('airports.json', $response->body());
+            } else {
+                return null;
+            }
+        }
+
+        $airports = json_decode(Storage::get('airports.json'), true);
+        if (empty($airports)) return null;
+
+        $closestIcao = null;
+        $minDistance = 5000;
+
+        foreach ($airports as $airport) {
+            if (empty($airport['icao']) || empty($airport['lat']) || empty($airport['lon'])) continue;
+            $distance = $this->getDistanceInMeters($lat, $lon, $airport['lat'], $airport['lon']);
+            if ($distance < $minDistance) {
+                $minDistance = $distance;
+                $closestIcao = $airport['icao'];
+            }
+        }
+
+        return $closestIcao;
     }
 }
