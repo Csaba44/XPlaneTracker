@@ -43,13 +43,63 @@ let airportsJsonData = null;
 
 const localCacheKey = (lat, lon) => `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
 
-const getColor = (alt) => {
-  if (alt < 1000) return "#ef4444";
-  if (alt < 5000) return "#f97316";
-  if (alt < 15000) return "#eab308";
-  if (alt < 25000) return "#22c55e";
-  if (alt < 35000) return "#06b6d4";
-  return "#3b82f6";
+// FlightRadar24-matching altitude → colour interpolator (input: feet)
+const FR24_STOPS = [
+  { ft: 0, r: 255, g: 255, b: 255 },
+  { ft: 300, r: 255, g: 224, b: 98 },
+  { ft: 700, r: 255, g: 234, b: 0 },
+  { ft: 1000, r: 240, g: 255, b: 0 },
+  { ft: 1300, r: 204, g: 255, b: 0 },
+  { ft: 2000, r: 66, g: 255, b: 0 },
+  { ft: 2600, r: 30, g: 255, b: 0 },
+  { ft: 3300, r: 0, g: 255, b: 12 },
+  { ft: 3900, r: 0, g: 255, b: 54 },
+  { ft: 4900, r: 0, g: 255, b: 114 },
+  { ft: 6600, r: 0, g: 255, b: 156 },
+  { ft: 8200, r: 0, g: 255, b: 210 },
+  { ft: 9800, r: 0, g: 255, b: 228 },
+  { ft: 11500, r: 0, g: 234, b: 255 },
+  { ft: 13100, r: 0, g: 192, b: 255 },
+  { ft: 14800, r: 0, g: 168, b: 255 },
+  { ft: 16400, r: 0, g: 150, b: 255 },
+  { ft: 18000, r: 0, g: 120, b: 255 },
+  { ft: 19700, r: 0, g: 84, b: 255 },
+  { ft: 21300, r: 0, g: 48, b: 255 },
+  { ft: 23000, r: 0, g: 30, b: 255 },
+  { ft: 24600, r: 0, g: 0, b: 255 },
+  { ft: 26200, r: 18, g: 0, b: 255 },
+  { ft: 27900, r: 36, g: 0, b: 255 },
+  { ft: 29500, r: 54, g: 0, b: 255 },
+  { ft: 31200, r: 78, g: 0, b: 255 },
+  { ft: 32800, r: 96, g: 0, b: 255 },
+  { ft: 34400, r: 120, g: 0, b: 255 },
+  { ft: 36100, r: 150, g: 0, b: 255 },
+  { ft: 37700, r: 174, g: 0, b: 255 },
+  { ft: 39400, r: 216, g: 0, b: 255 },
+  { ft: 41000, r: 255, g: 0, b: 228 },
+  { ft: 42600, r: 255, g: 0, b: 0 },
+];
+
+const altToColor = (ft) => {
+  if (ft <= FR24_STOPS[0].ft) {
+    const s = FR24_STOPS[0];
+    return `rgb(${s.r},${s.g},${s.b})`;
+  }
+  if (ft >= FR24_STOPS[FR24_STOPS.length - 1].ft) {
+    const s = FR24_STOPS[FR24_STOPS.length - 1];
+    return `rgb(${s.r},${s.g},${s.b})`;
+  }
+  for (let i = 1; i < FR24_STOPS.length; i++) {
+    if (ft <= FR24_STOPS[i].ft) {
+      const lo = FR24_STOPS[i - 1],
+        hi = FR24_STOPS[i];
+      const t = (ft - lo.ft) / (hi.ft - lo.ft);
+      const r = Math.round(lo.r + t * (hi.r - lo.r));
+      const g = Math.round(lo.g + t * (hi.g - lo.g));
+      const b = Math.round(lo.b + t * (hi.b - lo.b));
+      return `rgb(${r},${g},${b})`;
+    }
+  }
 };
 
 // --- Geometry helpers ---
@@ -269,39 +319,80 @@ const drawRunway = (el) => {
   const leDisplaced = el.tags?.["displaced_threshold:le"] ? parseFloat(el.tags["displaced_threshold:le"]) : 0;
   const heDisplaced = el.tags?.["displaced_threshold:he"] ? parseFloat(el.tags["displaced_threshold:he"]) : 0;
 
-  // For a displaced threshold: draw arrow chevrons in the displaced zone and
-  // start piano keys / TDZ bars from the actual landing threshold, not the pavement end.
-  const drawDisplacedZone = (pavementEnd, inwardBrg, displaceM) => {
+  // Draws the displaced threshold zone:
+  // - Transverse bar at the pavement end
+  // - Solid filled arrow polygons pointing INWARD (toward landing threshold), spaced through the zone
+  // - Solid transverse bar at the actual (displaced) threshold line
+  const drawDisplacedZone = (pavementEnd, inwardBrg, displaceM, landingThreshold) => {
     if (displaceM <= 0) return;
     const perpBrg = (inwardBrg + 90) % 360;
-    // Draw a transverse bar at the pavement end (runway end)
-    const endLeft = destination(pavementEnd[0], pavementEnd[1], (perpBrg + 180) % 360, half * 0.85);
-    const endRight = destination(pavementEnd[0], pavementEnd[1], perpBrg, half * 0.85);
-    pathLayers.push(L.polyline([endLeft, endRight], { color: "#ffffff", weight: 2, opacity: 0.8, interactive: false, pane: "runwaysPane" }).addTo(map));
-    // Draw chevrons pointing inward every ~40 m inside the displaced zone
-    const chevronSpacing = 40;
-    const chevronCount = Math.max(1, Math.floor(displaceM / chevronSpacing));
-    for (let i = 0; i < chevronCount; i++) {
-      const alongDist = (i + 0.5) * (displaceM / chevronCount);
-      const apex = destination(pavementEnd[0], pavementEnd[1], inwardBrg, alongDist);
-      const armLen = half * 0.35;
-      const armDepth = 12;
-      // left arm
-      const ll = destination(apex[0], apex[1], (perpBrg + 180) % 360, armLen);
-      const llFwd = destination(ll[0], ll[1], inwardBrg, armDepth);
-      // right arm
-      const rl = destination(apex[0], apex[1], perpBrg, armLen);
-      const rlFwd = destination(rl[0], rl[1], inwardBrg, armDepth);
-      pathLayers.push(L.polyline([llFwd, ll, apex, rl, rlFwd], { color: "#ffffff", weight: 1.5, opacity: 0.7, interactive: false, pane: "runwaysPane" }).addTo(map));
-    }
-  };
+    const oppBrg = (inwardBrg + 180) % 360;
 
-  drawDisplacedZone(cl[0], leInward, leDisplaced);
-  drawDisplacedZone(cl[cl.length - 1], heInward, heDisplaced);
+    // 1. Transverse bar at pavement end
+    const barL = destination(pavementEnd[0], pavementEnd[1], (perpBrg + 180) % 360, half * 0.85);
+    const barR = destination(pavementEnd[0], pavementEnd[1], perpBrg, half * 0.85);
+    pathLayers.push(L.polyline([barL, barR], { color: "#ffffff", weight: 2.5, opacity: 0.85, interactive: false, pane: "runwaysPane" }).addTo(map));
+
+    // 2. Solid filled arrow polygons pointing inward (toward landing threshold)
+    //    Real markings: typically 3 arrows evenly spaced laterally, repeated every ~50 m along zone
+    const arrowSpacingM = Math.min(50, displaceM / 1.5);
+    const arrowCount = Math.max(1, Math.round(displaceM / arrowSpacingM));
+    const arrowW = half * 0.28; // half-width of arrow base
+    const arrowBodyLen = 20; // shaft length
+    const arrowHeadLen = 14; // head length
+    const lateralSlots = [-half * 0.45, 0, half * 0.45]; // 3 columns
+
+    for (let i = 0; i < arrowCount; i++) {
+      // Place arrows so they don't crowd the pavement-end bar or the threshold bar
+      const alongDist = (i + 0.5) * (displaceM / arrowCount);
+      const rowCenter = destination(pavementEnd[0], pavementEnd[1], inwardBrg, alongDist);
+
+      for (const latOff of lateralSlots) {
+        const base = destination(rowCenter[0], rowCenter[1], perpBrg, latOff);
+
+        // Tail (wide base) — at the outboard / pavement-end side of the arrow
+        const tailCenter = destination(base[0], base[1], oppBrg, arrowBodyLen / 2);
+        const tL = destination(tailCenter[0], tailCenter[1], (perpBrg + 180) % 360, arrowW * 0.55);
+        const tR = destination(tailCenter[0], tailCenter[1], perpBrg, arrowW * 0.55);
+
+        // Mid point (narrowing toward head)
+        const midCenter = destination(base[0], base[1], inwardBrg, arrowBodyLen / 2);
+        const mL = destination(midCenter[0], midCenter[1], (perpBrg + 180) % 360, arrowW * 0.55);
+        const mR = destination(midCenter[0], midCenter[1], perpBrg, arrowW * 0.55);
+
+        // Arrowhead base (wider)
+        const hBase = destination(base[0], base[1], inwardBrg, arrowBodyLen);
+        const hL = destination(hBase[0], hBase[1], (perpBrg + 180) % 360, arrowW);
+        const hR = destination(hBase[0], hBase[1], perpBrg, arrowW);
+
+        // Arrowhead tip (apex pointing inward)
+        const tip = destination(hBase[0], hBase[1], inwardBrg, arrowHeadLen);
+
+        // Draw as filled polygon: tail-left → mid-left → head-left → tip → head-right → mid-right → tail-right
+        pathLayers.push(
+          L.polygon([tL, mL, hL, tip, hR, mR, tR], {
+            color: "transparent",
+            fillColor: "#ffffff",
+            fillOpacity: 0.85,
+            interactive: false,
+            pane: "runwaysPane",
+          }).addTo(map),
+        );
+      }
+    }
+
+    // 3. Solid transverse bar at the actual (displaced) landing threshold
+    const thrL = destination(landingThreshold[0], landingThreshold[1], (perpBrg + 180) % 360, half * 0.85);
+    const thrR = destination(landingThreshold[0], landingThreshold[1], perpBrg, half * 0.85);
+    pathLayers.push(L.polyline([thrL, thrR], { color: "#ffffff", weight: 3, opacity: 1, interactive: false, pane: "runwaysPane" }).addTo(map));
+  };
 
   // Actual landing thresholds (shifted inward by displaced amount)
   const leThreshold = leDisplaced > 0 ? destination(cl[0][0], cl[0][1], leInward, leDisplaced) : cl[0];
   const heThreshold = heDisplaced > 0 ? destination(cl[cl.length - 1][0], cl[cl.length - 1][1], heInward, heDisplaced) : cl[cl.length - 1];
+
+  drawDisplacedZone(cl[0], leInward, leDisplaced, leThreshold);
+  drawDisplacedZone(cl[cl.length - 1], heInward, heDisplaced, heThreshold);
 
   const drawPianoKeys = (thresholdPt, inwardBrg) => {
     const perpBrg = (inwardBrg + 90) % 360;
@@ -430,50 +521,31 @@ const drawFlight = (data) => {
   const pointMap = new Map(rawPath.map((p) => [coordKey(p[1], p[2]), p]));
   const reducedPath = simplifiedCoords.map((coord) => pointMap.get(coordKey(coord[0], coord[1])) || [null, coord[0], coord[1], 0, 0]);
 
-  const colorGroups = [];
-  let currentColor = null;
-  let currentGroup = null;
-
-  for (let i = 0; i < reducedPath.length; i++) {
-    const p = reducedPath[i];
-    const color = getColor(p[3]);
-    if (color !== currentColor) {
-      if (currentGroup) {
-        currentGroup.points.push([p[1], p[2]]);
-        currentGroup.altitudes.push(p[3]);
-        currentGroup.speeds.push(p[4] || 0);
-      }
-      currentColor = color;
-      currentGroup = { color, points: [[p[1], p[2]]], altitudes: [p[3]], speeds: [p[4] || 0] };
-      colorGroups.push(currentGroup);
-    } else {
-      currentGroup.points.push([p[1], p[2]]);
-      currentGroup.altitudes.push(p[3]);
-      currentGroup.speeds.push(p[4] || 0);
-    }
-  }
+  // Flat arrays for the simplified path — used for per-segment rendering and tooltip lookup
+  const allPoints = reducedPath.map((p) => [p[1], p[2]]);
+  const allAltitudes = reducedPath.map((p) => p[3] || 0);
+  const allSpeeds = reducedPath.map((p) => p[4] || 0);
 
   const flightLayerGroup = L.layerGroup();
 
-  colorGroups.forEach((group) => {
-    if (group.points.length < 2) return;
-    const poly = L.polyline(group.points, {
-      color: group.color,
-      weight: 4,
-      opacity: 0.9,
-      lineCap: "round",
-      pane: "flightPathPane",
-    });
+  // One short polyline per segment, coloured by the interpolated midpoint altitude.
+  // Segments share endpoints so they join seamlessly; lineCap "butt" avoids
+  // round caps that would poke out from under the next segment's colour.
+  for (let i = 0; i < reducedPath.length - 1; i++) {
+    const altMid = (allAltitudes[i] + allAltitudes[i + 1]) / 2;
+    const color = altToColor(altMid);
 
-    poly.on("mousemove", (e) => {
-      const { idx } = nearestPointOnPolyline(e.latlng, group.points);
-      poly.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${group.altitudes[idx]} ft<br><b>GS:</b> ${group.speeds[idx] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip", permanent: false }).openTooltip(e.latlng);
-    });
-    poly.on("mouseout", () => poly.closeTooltip());
+    const seg = L.polyline([allPoints[i], allPoints[i + 1]], { color, weight: 4, opacity: 0.95, lineCap: "butt", lineJoin: "round", pane: "flightPathPane" });
 
-    flightLayerGroup.addLayer(poly);
-    pathLayers.push(poly);
-  });
+    seg.on("mousemove", (e) => {
+      const { idx } = nearestPointOnPolyline(e.latlng, allPoints);
+      seg.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${allAltitudes[idx]} ft<br><b>GS:</b> ${allSpeeds[idx] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip", permanent: false }).openTooltip(e.latlng);
+    });
+    seg.on("mouseout", () => seg.closeTooltip());
+
+    flightLayerGroup.addLayer(seg);
+    pathLayers.push(seg);
+  }
 
   flightLayerGroup.addTo(map);
 
@@ -506,11 +578,8 @@ const drawFlight = (data) => {
     });
   }
 
-  if (colorGroups.length > 0) {
-    const allPoints = colorGroups.flatMap((g) => g.points);
-    if (allPoints.length > 0) {
-      map.fitBounds(L.latLngBounds(allPoints), { padding: [100, 100] });
-    }
+  if (allPoints.length > 0) {
+    map.fitBounds(L.latLngBounds(allPoints), { padding: [100, 100] });
   }
 };
 
@@ -726,7 +795,7 @@ onMounted(() => {
     </div>
 
     <!-- Chart panel -->
-    <div v-if="isChartVisible" class="absolute bottom-30 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
+    <div v-if="isChartVisible" class="absolute bottom-20 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
       <div class="flex justify-between items-center mb-2 px-2">
         <h4 class="text-white text-[10px] font-black uppercase tracking-tighter opacity-50">Flight Profile</h4>
         <button @click="isChartVisible = false" class="text-slate-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark"></i></button>
