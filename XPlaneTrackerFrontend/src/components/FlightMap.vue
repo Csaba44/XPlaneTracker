@@ -92,15 +92,6 @@ const angleDiff = (a, b) => {
 };
 
 // --- OPTIMIZATION 1: Ramer–Douglas–Peucker path simplification ---
-// Tolerance ~0.00015° ≈ 15 m on ground. Invisible at any zoom but removes
-// ~80-95% of points on straight cruise segments logged at 10 Hz.
-// --- Speed-adaptive Ramer–Douglas–Peucker simplification ---
-// Tolerance scales with groundspeed so taxi paths keep full fidelity while
-// high-speed cruise segments are aggressively thinned.
-//   GS <  50 kts  → 0.000005° (~0.5 m)  — taxi/pushback
-//   GS  50–150    → 0.000025° (~2.5 m)  — approach/departure
-//   GS 150–300    → 0.00007°  (~7 m)    — climb/descent
-//   GS > 300      → 0.00015°  (~15 m)   — cruise
 const toleranceForGS = (gs) => {
   if (gs < 50) return 0.000015;
   if (gs < 150) return 0.000015;
@@ -120,8 +111,6 @@ const rdpPerpendicularDist = (point, lineStart, lineEnd) => {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 };
 
-// Adaptive RDP — tolerance array is parallel to points array.
-// Uses the minimum tolerance of the segment endpoints (conservative).
 const rdpAdaptive = (points, tolerances) => {
   if (points.length <= 2) return points;
   let maxDist = 0,
@@ -143,7 +132,6 @@ const rdpAdaptive = (points, tolerances) => {
 };
 
 // --- OPTIMIZATION 2: Tooltip data index lookup for merged polylines ---
-// Each merged polyline stores its point array and altitudes for nearest-point tooltip.
 const nearestPointOnPolyline = (latlng, points) => {
   let minDist = Infinity,
     nearest = null,
@@ -359,8 +347,6 @@ const initMap = () => {
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 }).addTo(map);
 };
 
-// OPTIMIZATION 3: Batch layer removal via requestAnimationFrame to avoid
-// forced synchronous layout on every removeLayer call.
 const clearMap = () => {
   if (!map) return;
   const layers = pathLayers.splice(0);
@@ -374,22 +360,15 @@ const drawFlight = (data) => {
   clearMap();
   if (!map || !data?.path) return;
 
-  // OPTIMIZATION 4: Speed-adaptive RDP simplification.
-  // Chart (chartData) uses props.flightData.path directly — full fidelity preserved.
-  // For rendering only we work on the simplified copy.
   const rawPath = data.path;
   const coordsForRDP = rawPath.map((p) => [p[1], p[2]]);
   const tolerances = rawPath.map((p) => toleranceForGS(p[4] || 0));
   const simplifiedCoords = rdpAdaptive(coordsForRDP, tolerances);
 
-  // Map simplified coords back to original path entries so alt/gs travel with each point.
   const coordKey = (lat, lon) => `${lat.toFixed(6)},${lon.toFixed(6)}`;
   const pointMap = new Map(rawPath.map((p) => [coordKey(p[1], p[2]), p]));
   const reducedPath = simplifiedCoords.map((coord) => pointMap.get(coordKey(coord[0], coord[1])) || [null, coord[0], coord[1], 0, 0]);
 
-  // OPTIMIZATION 5: Group consecutive same-color points into a single polyline.
-  // Instead of N-1 individual segment layers, we get at most 6 color-group layers
-  // (one per altitude band). This is the largest DOM/canvas reduction.
   const colorGroups = [];
   let currentColor = null;
   let currentGroup = null;
@@ -398,7 +377,6 @@ const drawFlight = (data) => {
     const p = reducedPath[i];
     const color = getColor(p[3]);
     if (color !== currentColor) {
-      // When color changes, share the junction point so there's no gap.
       if (currentGroup) {
         currentGroup.points.push([p[1], p[2]]);
         currentGroup.altitudes.push(p[3]);
@@ -414,8 +392,6 @@ const drawFlight = (data) => {
     }
   }
 
-  // OPTIMIZATION 6: Build all polylines, attach a single mousemove tooltip per
-  // group (not per segment). Use a LayerGroup to add everything in one go.
   const flightLayerGroup = L.layerGroup();
 
   colorGroups.forEach((group) => {
@@ -428,8 +404,6 @@ const drawFlight = (data) => {
       pane: "flightPathPane",
     });
 
-    // OPTIMIZATION 7: Use mousemove with nearest-point lookup instead of
-    // per-segment tooltip bindings. One event listener per color group.
     poly.on("mousemove", (e) => {
       const { idx } = nearestPointOnPolyline(e.latlng, group.points);
       poly.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${group.altitudes[idx]} ft<br><b>GS:</b> ${group.speeds[idx] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip", permanent: false }).openTooltip(e.latlng);
@@ -440,9 +414,16 @@ const drawFlight = (data) => {
     pathLayers.push(poly);
   });
 
-  // Add all flight path layers at once
   flightLayerGroup.addTo(map);
 
+  // --- NEW: Fetch and draw departure airport runways ---
+  if (data.path && data.path.length > 0) {
+    const departurePoint = data.path[0];
+    // Array format is [timestamp, lat, lon, alt, speed]
+    fetchAndDrawRunways(departurePoint[1], departurePoint[2]);
+  }
+
+  // Arrival airport / touchdown markers
   if (data.landings?.length) {
     data.landings.forEach((landing) => {
       const icon = L.divIcon({
