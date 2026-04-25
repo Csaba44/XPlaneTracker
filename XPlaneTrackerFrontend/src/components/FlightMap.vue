@@ -726,7 +726,7 @@ onMounted(() => {
     </div>
 
     <!-- Chart panel -->
-    <div v-if="isChartVisible" class="absolute bottom-20 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
+    <div v-if="isChartVisible" class="absolute bottom-30 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
       <div class="flex justify-between items-center mb-2 px-2">
         <h4 class="text-white text-[10px] font-black uppercase tracking-tighter opacity-50">Flight Profile</h4>
         <button @click="isChartVisible = false" class="text-slate-400 hover:text-white transition-colors"><i class="fa-solid fa-xmark"></i></button>
