@@ -200,15 +200,77 @@ def send_landing_webhook():
         landing_buffer = []
         buffer_timer = None
 
+def fetch_simbrief_data(pilot_id):
+    if not pilot_id or pilot_id.strip() == "":
+        return {}
+    
+    try:
+        with console.status(f"[bold cyan]Fetching SimBrief data for Pilot ID {pilot_id}...[/bold cyan]"):
+            url = f"https://www.simbrief.com/api/xml.fetcher.php?userid={pilot_id}&json=1"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                gen = data.get('general', {})
+                ac = data.get('aircraft', {})
+                atc = data.get('atc', {})
+                
+                raw_airline = gen.get('icao_airline', '')
+                raw_flight_no = gen.get('flight_number', '')
+                
+                # Callsign comes directly from the ATC block
+                callsign = atc.get('callsign')
+                if not callsign or callsign == "":
+                    callsign = f"{raw_airline}{raw_flight_no}" if raw_airline else 'unknown'
+                
+                # Flight number is the combined string
+                full_flight_number = f"{raw_airline}{raw_flight_no}" if raw_airline else 'unknown'
+                
+                return {
+                    'callsign': callsign,
+                    'full_flight_number': full_flight_number,
+                    'airline': raw_airline if raw_airline else 'unknown',
+                    'ac_type': ac.get('icaocode', 'unknown'),
+                    'reg': ac.get('reg', ''),
+                }
+            else:
+                warn("SimBrief flight plan not found or invalid ID.")
+                return {}
+    except Exception as e:
+        warn(f"Failed to fetch SimBrief data: {e}")
+        return {}
+
+def get_airline_name(code):
+    if not code or code.lower() == "unknown":
+        return "unknown"
+        
+    code = code.strip().upper()
+    url = "https://raw.githubusercontent.com/npow/airline-codes/master/airlines.json"
+    
+    try:
+        response = requests.get(url, timeout=5)
+        if response.status_code == 200:
+            airlines = response.json()
+            for airline in airlines:
+                if airline.get("iata") == code or airline.get("icao") == code:
+                    return airline.get("name")
+        return "unknown"
+    except Exception as e:
+        return code
+
 try:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", type=str, default="127.0.0.1")
     parser.add_argument("--logout", action="store_true")
     parser.add_argument("--dev", action="store_true")
     parser.add_argument("--no-webhook", action="store_true", help="Disable Discord webhook notifications")
+    parser.add_argument("--update-simbrief", action="store_true", help="Prompt to update the saved SimBrief ID")
     args = parser.parse_args()
 
     TOKEN_FILE = ".xtracker_token"
+    SIMBRIEF_FILE = ".simbrief_id"
+    
     API_BASE_URL = "http://xtracker.local:5173/api" if args.dev else "https://api.csabolanta.hu/api"
     API_FLIGHTS_URL = f"{API_BASE_URL}/flights"
     API_USER_URL = f"{API_BASE_URL}/user"
@@ -260,11 +322,39 @@ try:
         console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
         sys.exit(1)
 
-    callsign = Prompt.ask("[bold magenta]Callsign[/bold magenta]", default="unknown")
-    flight_no = Prompt.ask("[bold magenta]Flight Number[/bold magenta]", default="unknown")
-    airline = Prompt.ask("[bold magenta]Airline[/bold magenta]", default="unknown")
-    reg = Prompt.ask("[bold magenta]Registration[/bold magenta]", default="unknown")
-    ac_type = Prompt.ask("[bold magenta]Aircraft Type[/bold magenta]", default="unknown")
+    # --- SIMBRIEF & AIRLINE LOGIC ---
+    saved_sb_id = ""
+    if os.path.exists(SIMBRIEF_FILE):
+        with open(SIMBRIEF_FILE, "r") as f: 
+            saved_sb_id = f.read().strip()
+
+    sb_id = saved_sb_id
+    
+    if not saved_sb_id or args.update_simbrief:
+        sb_id = Prompt.ask("\n[bold magenta]SimBrief Pilot ID[/bold magenta]", default=saved_sb_id)
+        if sb_id:
+            with open(SIMBRIEF_FILE, "w") as f:
+                f.write(sb_id)
+    else:
+        info(f"Using saved SimBrief ID: {sb_id} (Run with --update-simbrief to change)")
+        print("") # clean spacing
+            
+    sb_data = fetch_simbrief_data(sb_id)
+    
+    # Translate the raw airline code to a full name
+    raw_airline_code = sb_data.get('airline', 'unknown')
+    full_airline_name = "unknown"
+    if raw_airline_code != 'unknown':
+        with console.status("[bold cyan]Translating Airline Code...[/bold cyan]"):
+            full_airline_name = get_airline_name(raw_airline_code)
+    
+    callsign = Prompt.ask("[bold magenta]Callsign[/bold magenta]", default=sb_data.get('callsign', 'unknown'))
+    flight_no = Prompt.ask("[bold magenta]Flight Number[/bold magenta]", default=sb_data.get('full_flight_number', 'unknown'))
+    airline = Prompt.ask("[bold magenta]Airline[/bold magenta]", default=full_airline_name)
+    reg = Prompt.ask("[bold magenta]Registration[/bold magenta]", default=sb_data.get('reg', ''))
+    ac_type = Prompt.ask("[bold magenta]Aircraft Type[/bold magenta]", default=sb_data.get('ac_type', 'unknown'))
+
+    print("") # Empty line for cleaner UI
 
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     base_filename = f"flights/flight_{callsign}_{timestamp_str}"
