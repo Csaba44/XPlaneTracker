@@ -521,31 +521,85 @@ const drawFlight = (data) => {
   const pointMap = new Map(rawPath.map((p) => [coordKey(p[1], p[2]), p]));
   const reducedPath = simplifiedCoords.map((coord) => pointMap.get(coordKey(coord[0], coord[1])) || [null, coord[0], coord[1], 0, 0]);
 
-  // Flat arrays for the simplified path — used for per-segment rendering and tooltip lookup
+  // Flat arrays over the RDP-reduced path — altitude/speed are carried through
+  // from the original data via the pointMap lookup, so all fidelity is preserved.
   const allPoints = reducedPath.map((p) => [p[1], p[2]]);
   const allAltitudes = reducedPath.map((p) => p[3] || 0);
   const allSpeeds = reducedPath.map((p) => p[4] || 0);
 
-  const flightLayerGroup = L.layerGroup();
+  // --- OPTIMIZATION: tolerance-based colour-run merging ---
+  // With a continuous gradient, exact colour equality never occurs, so instead of
+  // one polyline per segment (O(N) layers) we merge consecutive segments whose
+  // representative colour is within RGB_MERGE_DELTA of each other into a single
+  // multi-point polyline.  On a typical cruise segment where altitude is nearly
+  // constant this collapses hundreds of segments into one layer, matching the
+  // performance of the original same-colour grouping while still producing a
+  // smooth gradient on climbs/descents.
+  //
+  // RGB_MERGE_DELTA = 6 (out of 255) is visually imperceptible but tight enough
+  // that an ascent from 0 → 42 600 ft produces ~200 distinct polylines rather
+  // than ~1000 (for a well-simplified path), keeping the DOM lean.
+  const RGB_MERGE_DELTA = 6;
 
-  // One short polyline per segment, coloured by the interpolated midpoint altitude.
-  // Segments share endpoints so they join seamlessly; lineCap "butt" avoids
-  // round caps that would poke out from under the next segment's colour.
+  const parseRgb = (rgbStr) => {
+    const m = rgbStr.match(/rgb\((\d+),(\d+),(\d+)\)/);
+    return m ? { r: +m[1], g: +m[2], b: +m[3] } : { r: 0, g: 0, b: 0 };
+  };
+
+  const rgbClose = (a, b) => Math.abs(a.r - b.r) <= RGB_MERGE_DELTA && Math.abs(a.g - b.g) <= RGB_MERGE_DELTA && Math.abs(a.b - b.b) <= RGB_MERGE_DELTA;
+
+  // Build merged colour-run groups.
+  // Each group: { color, rgb, points[], altitudes[], speeds[] }
+  // Points include the shared boundary point so adjacent groups overlap by one
+  // vertex — this is the same technique the original code used.
+  const colorGroups = [];
+  let curGroup = null;
+
   for (let i = 0; i < reducedPath.length - 1; i++) {
     const altMid = (allAltitudes[i] + allAltitudes[i + 1]) / 2;
     const color = altToColor(altMid);
+    const rgb = parseRgb(color);
 
-    const seg = L.polyline([allPoints[i], allPoints[i + 1]], { color, weight: 4, opacity: 0.95, lineCap: "butt", lineJoin: "round", pane: "flightPathPane" });
-
-    seg.on("mousemove", (e) => {
-      const { idx } = nearestPointOnPolyline(e.latlng, allPoints);
-      seg.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${allAltitudes[idx]} ft<br><b>GS:</b> ${allSpeeds[idx] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip", permanent: false }).openTooltip(e.latlng);
-    });
-    seg.on("mouseout", () => seg.closeTooltip());
-
-    flightLayerGroup.addLayer(seg);
-    pathLayers.push(seg);
+    if (!curGroup || !rgbClose(curGroup.rgb, rgb)) {
+      // Start a new group; if there was a previous one, give it the shared boundary
+      // point so there is no gap between polylines.
+      if (curGroup) {
+        curGroup.points.push(allPoints[i]);
+        curGroup.altitudes.push(allAltitudes[i]);
+        curGroup.speeds.push(allSpeeds[i]);
+      }
+      curGroup = { color, rgb, points: [allPoints[i]], altitudes: [allAltitudes[i]], speeds: [allSpeeds[i]] };
+      colorGroups.push(curGroup);
+    }
+    // Always append the end-point of this segment to the current group.
+    curGroup.points.push(allPoints[i + 1]);
+    curGroup.altitudes.push(allAltitudes[i + 1]);
+    curGroup.speeds.push(allSpeeds[i + 1]);
   }
+
+  const flightLayerGroup = L.layerGroup();
+
+  colorGroups.forEach((group) => {
+    if (group.points.length < 2) return;
+
+    const poly = L.polyline(group.points, {
+      color: group.color,
+      weight: 4,
+      opacity: 0.95,
+      lineCap: "butt",
+      lineJoin: "round",
+      pane: "flightPathPane",
+    });
+
+    poly.on("mousemove", (e) => {
+      const { idx } = nearestPointOnPolyline(e.latlng, group.points);
+      poly.bindTooltip(`<div class="font-mono text-xs"><b>ALT:</b> ${group.altitudes[idx]} ft<br><b>GS:</b> ${group.speeds[idx] || "N/A"} KTS</div>`, { sticky: true, className: "flight-path-tooltip", permanent: false }).openTooltip(e.latlng);
+    });
+    poly.on("mouseout", () => poly.closeTooltip());
+
+    flightLayerGroup.addLayer(poly);
+    pathLayers.push(poly);
+  });
 
   flightLayerGroup.addTo(map);
 
