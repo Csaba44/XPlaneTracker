@@ -54,24 +54,42 @@ class LeaderboardController extends Controller
                 }
             }
 
-            // --- Calculate Top Landings ---
+            // --- Calculate Top Landings (Ignoring Bounces) ---
             if (empty($landings) || empty($flight->arr_icao)) continue;
 
-            $bestFpmLanding = collect($landings)->sortBy(function ($l) {
-                return abs($l['fpm'] ?? 99999);
-            })->first();
+            // 1. Sort landings chronologically
+            usort($landings, function ($a, $b) {
+                return ($a['timestamp'] ?? 0) <=> ($b['timestamp'] ?? 0);
+            });
 
-            $bestGLanding = collect($landings)->sortBy(function ($l) {
-                return $l['g_force'] ?? 99;
-            })->first();
+            $sequences = [];
+            $lastTime = 0;
+
+            // 2. Group landings separated by at least 60 seconds
+            foreach ($landings as $landing) {
+                $t = $landing['timestamp'] ?? 0;
+
+                // If it has been more than 60s since the last touchdown, it's a new sequence
+                if ($t - $lastTime > 60) {
+                    $sequences[] = $landing; // Save the INITIAL touchdown of this sequence
+                }
+
+                // Update lastTime to the bounce's time so the 60s window rolls
+                $lastTime = $t;
+            }
+
+            // 3. The actual arrival is the first touchdown of the final sequence
+            $actualTouchdown = end($sequences);
+
+            if (!$actualTouchdown) continue;
 
             $airports[$flight->arr_icao][] = [
                 'flight_id' => $flight->id,
                 'user_id' => $flight->user_id,
                 'user_name' => $flight->user->name ?? 'Unknown',
                 'aircraft_type' => $flight->aircraft_type,
-                'fpm' => $bestFpmLanding['fpm'] ?? 0,
-                'g_force' => $bestGLanding['g_force'] ?? 0,
+                'fpm' => $actualTouchdown['fpm'] ?? 0,
+                'g_force' => $actualTouchdown['g_force'] ?? 0,
             ];
         }
 
@@ -82,15 +100,19 @@ class LeaderboardController extends Controller
             $uniqueUsers = collect($airportFlights)->pluck('user_id')->unique()->count();
 
             if ($uniqueUsers >= 2) {
+                // Get the best FPM per user
                 $topFpm = collect($airportFlights)
                     ->sortBy(function ($f) {
                         return abs($f['fpm']);
                     })
+                    ->unique('user_id') // Ensure only the user's personal best is shown
                     ->take(5)
                     ->values();
 
+                // Get the best G-Force per user
                 $topG = collect($airportFlights)
                     ->sortBy('g_force')
+                    ->unique('user_id') // Ensure only the user's personal best is shown
                     ->take(5)
                     ->values();
 
