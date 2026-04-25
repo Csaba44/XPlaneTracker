@@ -91,12 +91,11 @@ const fetchFlights = async () => {
     console.error(error);
   }
 };
-
 const viewFlight = async (id) => {
   selectedFlightId.value = id;
   try {
     const response = await api.get(`/api/flights/${id}`);
-    currentFlightData.value = response.data;
+    currentFlightData.value = response.data.data;
   } catch (error) {
     console.error(error);
   }

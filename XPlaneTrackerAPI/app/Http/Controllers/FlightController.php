@@ -46,7 +46,6 @@ class FlightController extends Controller
             return response()->json(['error' => 'File not found'], 404);
         }
 
-        // Attach photo for single flight too
         if ($flight->aircraft_registration) {
             $photos = $this->getPhotosForRegistrations([$flight->aircraft_registration]);
             $flight->photo = $photos[$flight->aircraft_registration] ?? null;
@@ -54,13 +53,13 @@ class FlightController extends Controller
             $flight->photo = null;
         }
 
-        $absolutePath = $disk->path($flight->file_path);
+        $content = gzdecode(file_get_contents($disk->path($flight->file_path)));
+        $flightData = json_decode($content, true);
 
-        // Return both flight data (with photo) and the file
-        // Since original show() returned the raw file, we now return JSON with flight + signed URL
         return response()->json([
             'flight' => $flight,
-            'file_url' => Storage::disk('public')->url($flight->file_path),
+            'file_url' => $disk->url($flight->file_path),
+            'data' => $flightData,
         ]);
     }
 
