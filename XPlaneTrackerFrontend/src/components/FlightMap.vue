@@ -17,17 +17,29 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  flights: {
+    type: Array,
+    default: () => [],
+  },
 });
+
+const emit = defineEmits(["setSearchQuery"]);
 
 const mapContainer = ref(null);
 const isChartVisible = ref(false);
+const showConnections = ref(false);
 const chartRef = ref(null);
 let map = null;
 let pathLayers = [];
+let connectionLayers = [];
 let hoverMarker = null;
 
 const runwayCache = new Map();
 const pendingRequests = new Set();
+
+// Airport coordinate cache
+const airportCoordCache = new Map();
+let airportsJsonData = null;
 
 const localCacheKey = (lat, lon) => `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
 
@@ -40,7 +52,7 @@ const getColor = (alt) => {
   return "#3b82f6";
 };
 
-// --- Geometry helpers (unchanged) ---
+// --- Geometry helpers ---
 const bearing = (lat1, lon1, lat2, lon2) => {
   const toRad = (d) => (d * Math.PI) / 180;
   const φ1 = toRad(lat1),
@@ -91,7 +103,7 @@ const angleDiff = (a, b) => {
   return d > 180 ? 360 - d : d;
 };
 
-// --- OPTIMIZATION 1: Ramer–Douglas–Peucker path simplification ---
+// --- Path simplification ---
 const toleranceForGS = (gs) => {
   if (gs < 50) return 0.000015;
   if (gs < 150) return 0.000015;
@@ -131,7 +143,6 @@ const rdpAdaptive = (points, tolerances) => {
   return [points[0], points[points.length - 1]];
 };
 
-// --- OPTIMIZATION 2: Tooltip data index lookup for merged polylines ---
 const nearestPointOnPolyline = (latlng, points) => {
   let minDist = Infinity,
     nearest = null,
@@ -147,7 +158,7 @@ const nearestPointOnPolyline = (latlng, points) => {
   return { point: nearest, idx: nearestIdx };
 };
 
-// --- Chart data & pointer logic (unchanged) ---
+// --- Chart ---
 const chartData = computed(() => {
   if (!props.flightData?.path) return [];
   let totalDist = 0;
@@ -230,91 +241,64 @@ const chartOptions = computed(() => ({
   ],
 }));
 
-// --- Runway drawing (unchanged) ---
+// --- Runway drawing ---
 const drawRunway = (el) => {
   if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
-  let cl = el.geometry.map((g) => [g.lat, g.lon]);
-  const widthM = el.tags?.width ? parseFloat(el.tags.width) : 45;
-  const half = widthM / 2;
-  if (el.tags?.ref) {
-    const [leRef] = el.tags.ref.split("/");
-    const leHeading = designatorToHeading(leRef);
-    if (leHeading !== null) {
-      const actualBearing = bearing(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
-      if (angleDiff(actualBearing, leHeading) > 90) cl = [...cl].reverse();
-    }
-  }
-  const leInward = bearing(cl[0][0], cl[0][1], cl[1][0], cl[1][1]);
-  const heInward = bearing(cl[cl.length - 1][0], cl[cl.length - 1][1], cl[cl.length - 2][0], cl[cl.length - 2][1]);
-  const right = offsetPolyline(cl, half);
-  const left = offsetPolyline(cl, -half);
-  pathLayers.push(L.polygon([...right, ...[...left].reverse()], { color: "transparent", fillColor: "#111111", fillOpacity: 1, interactive: false, pane: "runwaysPane" }).addTo(map));
-  [right, left].forEach((edge) => {
-    pathLayers.push(L.polyline(edge, { color: "#ffffff", weight: 2, opacity: 0.9, interactive: false, pane: "runwaysPane" }).addTo(map));
+
+  const centerline = el.geometry.map((n) => [n.lat, n.lon]);
+
+  const tags = el.tags || {};
+  const refTag = tags.ref || "";
+  const parts = refTag.split("/").map((s) => s.trim());
+  let leRef = parts[0] || null;
+  let heRef = parts[1] || null;
+
+  const surface = (tags.surface || "").toLowerCase();
+  const isPaved = !surface || ["asphalt", "concrete", "paved", "tarmac", "bituminous"].some((s) => surface.includes(s));
+  const rwyColor = isPaved ? "rgba(255,255,255,0.18)" : "rgba(180,140,60,0.22)";
+
+  const rwyWidth = (() => {
+    const w = parseFloat(tags.width);
+    if (!isNaN(w)) return w;
+    return 45;
+  })();
+
+  const cl = centerline;
+  const len = cl.length;
+
+  const brg = bearing(cl[0][0], cl[0][1], cl[len - 1][0], cl[len - 1][1]);
+
+  const leftEdge = offsetPolyline(cl, -rwyWidth / 2);
+  const rightEdge = offsetPolyline(cl, rwyWidth / 2);
+
+  const polygon = [...leftEdge, ...[...rightEdge].reverse()];
+
+  const poly = L.polygon(polygon, {
+    color: "rgba(255,255,255,0.25)",
+    weight: 1,
+    fillColor: rwyColor,
+    fillOpacity: 1,
+    interactive: false,
+    pane: "runwaysPane",
   });
-  pathLayers.push(L.polyline(cl, { color: "#ffffff", weight: 1.5, opacity: 0.65, dashArray: "20 15", interactive: false, pane: "runwaysPane" }).addTo(map));
-  const drawPianoKeys = (thresholdPt, inwardBrg) => {
-    const perpBrg = (inwardBrg + 90) % 360;
-    const numStripes = 8,
-      spanM = widthM * 0.8,
-      gap = spanM / (numStripes - 1);
-    const stripeHalfW = (spanM / (numStripes * 2 - 1)) * 0.45,
-      depthM = 30,
-      inboardM = 6;
-    for (let i = 0; i < numStripes; i++) {
-      const lateralOffset = -spanM / 2 + gap * i;
-      const center = destination(thresholdPt[0], thresholdPt[1], perpBrg, lateralOffset);
-      const near = destination(center[0], center[1], inwardBrg, inboardM);
-      const far = destination(near[0], near[1], inwardBrg, depthM);
-      const p1 = destination(near[0], near[1], perpBrg, stripeHalfW);
-      const p2 = destination(far[0], far[1], perpBrg, stripeHalfW);
-      const p3 = destination(far[0], far[1], (perpBrg + 180) % 360, stripeHalfW);
-      const p4 = destination(near[0], near[1], (perpBrg + 180) % 360, stripeHalfW);
-      pathLayers.push(L.polygon([p1, p2, p3, p4], { color: "transparent", fillColor: "#ffffff", fillOpacity: 0.85, interactive: false, pane: "runwaysPane" }).addTo(map));
-    }
-  };
-  drawPianoKeys(cl[0], leInward);
-  drawPianoKeys(cl[cl.length - 1], heInward);
-  const runwayLen = distanceM(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
-  const tzDistances = [150, 300, 450, 600, 750, 900].filter((d) => d < runwayLen - 150);
-  const barLenM = 22.5,
-    barWidthM = 3,
-    barLateralM = widthM * 0.2;
-  const drawTDZBars = (thresholdPt, inwardBrg) => {
-    const perpBrg = (inwardBrg + 90) % 360;
-    tzDistances.forEach((dist) => {
-      const along = destination(thresholdPt[0], thresholdPt[1], inwardBrg, dist);
-      [-barLateralM, barLateralM].forEach((latOff) => {
-        const bc = destination(along[0], along[1], perpBrg, latOff);
-        const fwd = destination(bc[0], bc[1], inwardBrg, barLenM / 2);
-        const aft = destination(bc[0], bc[1], (inwardBrg + 180) % 360, barLenM / 2);
-        const p1 = destination(fwd[0], fwd[1], perpBrg, barWidthM / 2);
-        const p2 = destination(aft[0], aft[1], perpBrg, barWidthM / 2);
-        const p3 = destination(aft[0], aft[1], (perpBrg + 180) % 360, barWidthM / 2);
-        const p4 = destination(fwd[0], fwd[1], (perpBrg + 180) % 360, barWidthM / 2);
-        pathLayers.push(L.polygon([p1, p2, p3, p4], { color: "transparent", fillColor: "#ffffff", fillOpacity: 0.75, interactive: false, pane: "runwaysPane" }).addTo(map));
-      });
-    });
-  };
-  drawTDZBars(cl[0], leInward);
-  drawTDZBars(cl[cl.length - 1], heInward);
-  if (el.tags?.ref) {
-    let parts = el.tags.ref.split("/");
-    let leRef = parts[0],
-      heRef = parts[1];
-    if (leRef && heRef) {
-      const hdg1 = parseInt(leRef, 10) * 10;
-      if (angleDiff(hdg1, leInward) > angleDiff(hdg1, heInward)) [leRef, heRef] = [heRef, leRef];
-    }
-    const addLabel = (thresholdPt, inwardBrg, label) => {
-      if (!label) return;
-      const pos = destination(thresholdPt[0], thresholdPt[1], inwardBrg, 55);
-      const icon = L.divIcon({ html: `<div class="rwy-designator" style="transform:rotate(${inwardBrg}deg)">${label}</div>`, className: "", iconSize: [40, 20], iconAnchor: [20, 10] });
-      pathLayers.push(L.marker(pos, { icon, interactive: false }).addTo(map));
-    };
-    addLabel(cl[0], leInward, leRef);
-    addLabel(cl[cl.length - 1], heInward, heRef);
+
+  pathLayers.push(poly.addTo(map));
+
+  const leInward = (brg + 180) % 360;
+  const heInward = brg;
+
+  if (leRef && heRef) {
+    const hdg1 = parseInt(leRef, 10) * 10;
+    if (angleDiff(hdg1, leInward) > angleDiff(hdg1, heInward)) [leRef, heRef] = [heRef, leRef];
   }
+  const addLabel = (thresholdPt, inwardBrg, label) => {
+    if (!label) return;
+    const pos = destination(thresholdPt[0], thresholdPt[1], inwardBrg, 55);
+    const icon = L.divIcon({ html: `<div class="rwy-designator" style="transform:rotate(${inwardBrg}deg)">${label}</div>`, className: "", iconSize: [40, 20], iconAnchor: [20, 10] });
+    pathLayers.push(L.marker(pos, { icon, interactive: false }).addTo(map));
+  };
+  addLabel(cl[0], leInward, leRef);
+  addLabel(cl[cl.length - 1], heInward, heRef);
 };
 
 const fetchAndDrawRunways = async (lat, lon) => {
@@ -344,6 +328,7 @@ const initMap = () => {
   L.control.zoom({ position: "bottomright" }).addTo(map);
   map.createPane("runwaysPane").style.zIndex = 390;
   map.createPane("flightPathPane").style.zIndex = 410;
+  map.createPane("connectionsPane").style.zIndex = 380;
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 }).addTo(map);
 };
 
@@ -351,6 +336,14 @@ const clearMap = () => {
   if (!map) return;
   const layers = pathLayers.splice(0);
   pendingRequests.clear();
+  requestAnimationFrame(() => {
+    layers.forEach((l) => map.removeLayer(l));
+  });
+};
+
+const clearConnections = () => {
+  if (!map) return;
+  const layers = connectionLayers.splice(0);
   requestAnimationFrame(() => {
     layers.forEach((l) => map.removeLayer(l));
   });
@@ -416,14 +409,11 @@ const drawFlight = (data) => {
 
   flightLayerGroup.addTo(map);
 
-  // --- NEW: Fetch and draw departure airport runways ---
   if (data.path && data.path.length > 0) {
     const departurePoint = data.path[0];
-    // Array format is [timestamp, lat, lon, alt, speed]
     fetchAndDrawRunways(departurePoint[1], departurePoint[2]);
   }
 
-  // Arrival airport / touchdown markers
   if (data.landings?.length) {
     data.landings.forEach((landing) => {
       const icon = L.divIcon({
@@ -456,9 +446,138 @@ const drawFlight = (data) => {
   }
 };
 
+// --- Connections feature ---
+
+const loadAirportsJson = async () => {
+  if (airportsJsonData) return airportsJsonData;
+  try {
+    // Try the backend airports.json first (same source as backend uses)
+    const response = await fetch("https://raw.githubusercontent.com/mwgg/Airports/master/airports.json");
+    airportsJsonData = await response.json();
+    return airportsJsonData;
+  } catch (e) {
+    console.error("Failed to load airports.json", e);
+    return {};
+  }
+};
+
+const getAirportCoords = async (icao) => {
+  if (!icao) return null;
+  const upper = icao.toUpperCase();
+  if (airportCoordCache.has(upper)) return airportCoordCache.get(upper);
+
+  const airports = await loadAirportsJson();
+  const airport = airports[upper];
+  if (airport && airport.lat != null && airport.lon != null) {
+    const coords = [parseFloat(airport.lat), parseFloat(airport.lon)];
+    airportCoordCache.set(upper, coords);
+    return coords;
+  }
+  airportCoordCache.set(upper, null);
+  return null;
+};
+
+// Compute unique connection pairs from flights (sorted so LHBP-LGZA and LGZA-LHBP are same pair)
+const computeConnections = (flightList) => {
+  const pairMap = new Map();
+
+  for (const flight of flightList) {
+    const dep = flight.dep_icao;
+    const arr = flight.arr_icao;
+
+    // Skip incomplete flights (either end is null/empty)
+    if (!dep || !arr || dep === "NULL" || arr === "NULL") continue;
+
+    // Normalize: sort alphabetically to group both directions
+    const key = [dep.toUpperCase(), arr.toUpperCase()].sort().join("_");
+    const depUpper = dep.toUpperCase();
+    const arrUpper = arr.toUpperCase();
+
+    if (!pairMap.has(key)) {
+      pairMap.set(key, {
+        icao1: [dep.toUpperCase(), arr.toUpperCase()].sort()[0],
+        icao2: [dep.toUpperCase(), arr.toUpperCase()].sort()[1],
+        depUpper,
+        arrUpper,
+        count: 1,
+      });
+    } else {
+      pairMap.get(key).count++;
+    }
+  }
+
+  return Array.from(pairMap.values());
+};
+
+const drawConnections = async () => {
+  clearConnections();
+  if (!map || !showConnections.value) return;
+
+  const connections = computeConnections(props.flights);
+
+  for (const conn of connections) {
+    const coords1 = await getAirportCoords(conn.icao1);
+    const coords2 = await getAirportCoords(conn.icao2);
+
+    if (!coords1 || !coords2) continue;
+
+    const line = L.polyline([coords1, coords2], {
+      color: "#94a3b8",
+      weight: 2,
+      opacity: 0.5,
+      dashArray: "6 4",
+      pane: "connectionsPane",
+    });
+
+    const label = `${conn.icao1} – ${conn.icao2} (${conn.count} járat)`;
+
+    line.bindTooltip(label, {
+      sticky: true,
+      className: "connection-tooltip",
+      permanent: false,
+    });
+
+    line.on("mouseover", function () {
+      this.setStyle({ color: "#e2e8f0", opacity: 0.9, weight: 3 });
+    });
+
+    line.on("mouseout", function () {
+      this.setStyle({ color: "#94a3b8", opacity: 0.5, weight: 2 });
+    });
+
+    line.on("click", () => {
+      const dep = conn.icao1.toLowerCase();
+      const arr = conn.icao2.toLowerCase();
+      const filterText = `dep:${dep} arr:${arr} dep:${arr} arr:${dep}`;
+      emit("setSearchQuery", filterText);
+    });
+
+    line.addTo(map);
+    connectionLayers.push(line);
+  }
+};
+
 watch(
   () => props.flightData,
   (newData) => drawFlight(newData),
+  { deep: true },
+);
+
+watch(showConnections, (val) => {
+  if (val) {
+    drawConnections();
+  } else {
+    clearConnections();
+  }
+});
+
+watch(
+  () => props.flights,
+  () => {
+    if (showConnections.value) {
+      drawConnections();
+    }
+  },
   { deep: true },
 );
 
@@ -472,11 +591,23 @@ onMounted(() => {
   <main class="flex-grow relative">
     <div ref="mapContainer" class="absolute inset-0 w-full h-full z-0"></div>
 
-    <button @click="isChartVisible = !isChartVisible" class="absolute bottom-6 left-6 z-[1000] bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group">
-      <i class="fa-solid fa-chart-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
-      <span class="font-bold text-xs uppercase tracking-widest">Grafikon</span>
-    </button>
+    <!-- Bottom left controls -->
+    <div class="absolute bottom-6 left-6 z-[1000] flex flex-col gap-2">
+      <!-- Flight chart toggle -->
+      <button @click="isChartVisible = !isChartVisible" class="bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group">
+        <i class="fa-solid fa-chart-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
+        <span class="font-bold text-xs uppercase tracking-widest">Grafikon</span>
+      </button>
 
+      <!-- Connections toggle -->
+      <button @click="showConnections = !showConnections" :class="['px-5 py-2.5 rounded-full border shadow-2xl flex items-center gap-2 transition-all group', showConnections ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/60 text-cyan-300' : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-white']">
+        <i :class="['fa-solid fa-route transition-transform group-hover:scale-110', showConnections ? 'text-cyan-400' : 'text-slate-400']"></i>
+        <span class="font-bold text-xs uppercase tracking-widest">Kapcsolatok</span>
+        <span v-if="showConnections" class="ml-1 w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse"></span>
+      </button>
+    </div>
+
+    <!-- Chart panel -->
     <div v-if="isChartVisible" class="absolute bottom-20 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
       <div class="flex justify-between items-center mb-2 px-2">
         <h4 class="text-white text-[10px] font-black uppercase tracking-tighter opacity-50">Flight Profile</h4>
@@ -530,6 +661,18 @@ onMounted(() => {
   color: white;
   border: 1px solid #475569;
   border-radius: 4px;
+}
+.connection-tooltip {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: monospace;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .chart {
   height: 100%;
