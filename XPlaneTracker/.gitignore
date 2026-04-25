@@ -3,3 +3,5 @@ flights
 .xtracker_token
 .venv
 .env
+.simbrief_id
+log.txt
