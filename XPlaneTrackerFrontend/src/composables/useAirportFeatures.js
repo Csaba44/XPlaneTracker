@@ -39,8 +39,8 @@ const drawTaxiways = (elements, map, featureLayers) => {
         const icon = L.divIcon({
           html: `<div class="taxiway-label-marker">${el.tags.ref}</div>`,
           className: "",
-          iconSize: null,
-          iconAnchor: [0, 0],
+          iconSize: [0, 0],
+          iconAnchor: [0, 12],
         });
         const marker = L.marker([midPt.lat, midPt.lon], { icon, interactive: false, pane: "taxiwaysPane" });
         marker.addTo(map);
