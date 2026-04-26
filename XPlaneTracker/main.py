@@ -1,39 +1,29 @@
-import json
-import time
-import os
-import gzip
-import threading
-import requests
-import argparse
-import logging
-import re
+"""
+CSABOLANTA Flight Tracker — CustomTkinter GUI
+Matches exact flow of original CLI app, with sleek dark UI.
+"""
+
+import customtkinter as ctk
+import tkinter as tk
+from tkinter import filedialog
+import json, time, os, gzip, threading, requests, argparse, logging, re
 from datetime import datetime, timezone
 from dotenv import load_dotenv
 import sys
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
-from rich import box
-from rich.prompt import Prompt
-from rich.live import Live
-from rich.layout import Layout
-
-from xp_provider import XPlaneProvider
-from msfs_provider import MSFSProvider
-
+# ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
-    filename='log.txt',
-    filemode='w',
+    filename="log.txt",
+    filemode="w",
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
 def clean_text(text):
-    return re.sub(r'\[.*?\]', '', text)
+    return re.sub(r"\[.*?\]", "", text)
 
 def resource_path(relative_path):
-    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    base_path = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
 try:
@@ -41,481 +31,981 @@ try:
 except Exception as e:
     logging.error(f"Dotenv load error: {e}")
 
-console = Console()
+# ── CLI Arguments (parsed before GUI launches) ────────────────────────────────
+_parser = argparse.ArgumentParser(description="CSABOLANTA Flight Tracker")
+_parser.add_argument("--host",       type=str, default="127.0.0.1",
+                     help="X-Plane UDP host IP (default: 127.0.0.1)")
+_parser.add_argument("--dev",        action="store_true",
+                     help="Use local dev API (xtracker.local:5173)")
+_parser.add_argument("--no-webhook", action="store_true",
+                     help="Disable Discord webhook notifications")
+_parser.add_argument("--logout",     action="store_true",
+                     help="Clear saved API token and exit")
+ARGS = _parser.parse_args()
 
-current_telemetry = {"lat": None, "on_ground": None}
-log_lines = []
-user_name = "Pilot"
-
-landing_buffer = []
-buffer_lock = threading.Lock()
-buffer_timer = None
-
-def log(msg):
-    log_lines.append(msg)
-    if len(log_lines) > 300:
-        log_lines.pop(0)
-    
-    c_msg = clean_text(msg)
-    if "LAT:" not in c_msg and "LON:" not in c_msg:
-        if "ERROR" in c_msg:
-            logging.error(c_msg)
-        else:
-            logging.info(c_msg)
-
-def info(msg): 
-    logging.info(clean_text(msg))
-    console.print(f"[bold cyan]ℹ[/bold cyan] {msg}")
-
-def ok(msg): 
-    logging.info(clean_text(msg))
-    console.print(f"[bold green]✔[/bold green] {msg}")
-
-def warn(msg): 
-    logging.warning(clean_text(msg))
-    console.print(f"[bold yellow]⚠[/bold yellow] {msg}")
-
-def err(msg): 
-    logging.error(clean_text(msg))
-    console.print(f"[bold red]✖[/bold red] {msg}")
-
-def step(msg): 
-    logging.info(clean_text(msg))
-    console.print(f"[bold white]➜[/bold white] {msg}")
-
-def header():
-    title = Text("CSABOLANTA", style="bold magenta")
-    subtitle = Text("X-Plane & MSFS Flight Tracker", style="dim")
-    console.print(
-        Panel.fit(
-            Text.assemble(title, "\n", subtitle),
-            border_style="magenta",
-            box=box.ROUNDED
-        )
-    )
-
-def tracking_banner():
-    return Panel(
-        "[bold green]Tracking started[/bold green]\n"
-        "Press [bold red]Ctrl+C[/bold red] to stop and upload.",
-        title="[bold green]Status[/bold green]",
-        border_style="green",
-        box=box.ROUNDED
-    )
-
-def build_landings_panel(landings):
-    if not landings:
-        content = "[dim]Waiting for touchdown...[/dim]"
+# Handle --logout immediately, before GUI starts
+if ARGS.logout:
+    if os.path.exists(".xtracker_token"):
+        os.remove(".xtracker_token")
+        print("Logged out successfully.")
     else:
-        lines = []
-        for l in landings[-2:]:
-            lines.append(f"• [bold green]{l['fpm']:.0f} FPM[/bold green] ({l['g_force']:.2f}G)")
-        content = "\n".join(lines)
-        
-    return Panel(
-        content,
-        title="[bold green]Recent Landings[/bold green]",
-        border_style="green",
-        box=box.ROUNDED
-    )
+        print("Not logged in.")
+    sys.exit(0)
 
-def build_layout():
-    layout = Layout()
-    layout.split(
-        Layout(name="top", size=5),
-        Layout(name="body")
-    )
-    layout["top"].split_row(
-        Layout(name="status"),
-        Layout(name="landings")
-    )
-    return layout
+API_BASE_URL = (
+    "http://xtracker.local:5173/api" if ARGS.dev
+    else "https://api.csabolanta.hu/api"
+)
 
-def build_log_panel():
-    return Panel(
-        "\n".join(log_lines[-30:]),
-        title="[bold cyan]Live Log[/bold cyan]",
-        border_style="cyan",
-        box=box.ROUNDED
-    )
+# ── Theme constants ───────────────────────────────────────────────────────────
+BG          = "#0b0e14"
+SIDEBAR     = "#151921"
+CARD        = "#1c222d"
+CARD_HOVER  = "#252d3a"
+ACCENT      = "#38bdf8"
+ACCENT_DIM  = "#1e6a8a"
+BORDER      = "#2d3544"
+MUTED       = "#94a3b8"
+WHITE       = "#e2e8f0"
+RED         = "#f87171"
+GREEN       = "#4ade80"
+YELLOW      = "#fbbf24"
 
-def simulator_selector():
-    console.print(Panel(
-        "[bold cyan]1.[/bold cyan] X-Plane\n"
-        "[bold cyan]2.[/bold cyan] MSFS 2024 / 2020",
-        title="[bold magenta]Simulator Selection[/bold magenta]",
-        border_style="magenta",
-        box=box.ROUNDED
-    ))
-    choice = Prompt.ask("Choose simulator", choices=["1", "2"], default="1")
-    return "X-Plane" if choice == "1" else "MSFS 2024"
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("dark-blue")
 
-def send_landing_webhook():
-    global landing_buffer, buffer_timer
+# ── Providers (lazy import so missing deps don't crash GUI startup) ────────────
+def load_provider(sim_choice, host):
+    if sim_choice == "X-Plane":
+        from xp_provider import XPlaneProvider
+        return XPlaneProvider(ip=host)
+    else:
+        from msfs_provider import MSFSProvider
+        return MSFSProvider()
 
-    if args.no_webhook:
-        with buffer_lock:
-            landing_buffer = []
-            buffer_timer = None
-        return
+# ═════════════════════════════════════════════════════════════════════════════
+#  HELPER WIDGETS
+# ═════════════════════════════════════════════════════════════════════════════
 
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
-    if not webhook_url or not landing_buffer:
-        return
+class Divider(ctk.CTkFrame):
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, height=1, fg_color=BORDER, **kwargs)
+        self.pack_propagate(False)
 
-    metadata = flight_path_data.get("metadata", {})
 
-    with buffer_lock:
-        title = f"{user_name} muro phral megérkezett, shavale!"
-        
-        description_lines = []
-        for i, l in enumerate(landing_buffer):
-            prefix = "" if i == 0 else "Bounce: "
-            description_lines.append(f"**{prefix}{l['fpm']:.0f} fpm** | **{l['g']:.2f} g**")
-        
-        payload = {
-            "embeds": [{
-                "title": title,
-                "description": "\n".join(description_lines),
-                "color": 0x38bdf8,
-                "fields": [
-                    {"name": "Callsign", "value": metadata.get("callsign", "N/A"), "inline": True},
-                    {"name": "Flight Number", "value": metadata.get("flight_number", "N/A"), "inline": True},
-                    {"name": "Registration", "value": metadata.get("aircraft_registration") or "N/A", "inline": True},
-                    {"name": "Aircraft Type", "value": metadata.get("aircraft_type", "N/A"), "inline": True},
-                    {"name": "Simulator", "value": metadata.get("simulator", "N/A"), "inline": True},
-                ],
-                "footer": {
-                    "text": "csabolanta.hu"
-                },
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }]
+class SectionLabel(ctk.CTkLabel):
+    def __init__(self, parent, text, **kwargs):
+        super().__init__(
+            parent, text=text.upper(),
+            font=("Consolas", 9, "bold"),
+            text_color=MUTED,
+            **kwargs,
+        )
+
+
+class AccentButton(ctk.CTkButton):
+    def __init__(self, parent, **kwargs):
+        kwargs.setdefault("height", 34)
+        kwargs.setdefault("font", ("Consolas", 12, "bold"))
+        kwargs.setdefault("text_color", "#0b0e14")
+        kwargs.setdefault("corner_radius", 6)
+        kwargs.setdefault("fg_color", ACCENT)
+        kwargs.setdefault("hover_color", ACCENT_DIM)
+        super().__init__(parent, **kwargs)
+
+
+class GhostButton(ctk.CTkButton):
+    def __init__(self, parent, **kwargs):
+        kwargs.setdefault("height", 30)
+        kwargs.setdefault("font", ("Consolas", 11))
+        kwargs.setdefault("text_color", MUTED)
+        kwargs.setdefault("corner_radius", 6)
+        kwargs.setdefault("border_color", BORDER)
+        kwargs.setdefault("fg_color", "transparent")
+        kwargs.setdefault("hover_color", CARD_HOVER)
+        kwargs.setdefault("border_width", 1)
+        super().__init__(parent, **kwargs)
+
+
+class StyledEntry(ctk.CTkEntry):
+    def __init__(self, parent, **kwargs):
+        super().__init__(
+            parent,
+            fg_color=CARD,
+            border_color=BORDER,
+            text_color=WHITE,
+            placeholder_text_color=MUTED,
+            font=("Consolas", 12),
+            corner_radius=6,
+            height=34,
+            **kwargs,
+        )
+
+
+class LogBox(ctk.CTkTextbox):
+    """High-performance scrolling log — batches UI updates."""
+    def __init__(self, parent, **kwargs):
+        super().__init__(
+            parent,
+            fg_color=CARD,
+            text_color=MUTED,
+            font=("Consolas", 11),
+            corner_radius=6,
+            border_width=1,
+            border_color=BORDER,
+            wrap="none",
+            **kwargs,
+        )
+        self.configure(state="disabled")
+        self._pending = []
+        self._lock = threading.Lock()
+        self._flush_scheduled = False
+
+    def append(self, line: str):
+        with self._lock:
+            self._pending.append(line)
+        if not self._flush_scheduled:
+            self._flush_scheduled = True
+            self.after(80, self._flush)
+
+    def _flush(self):
+        with self._lock:
+            lines, self._pending = self._pending, []
+        self._flush_scheduled = False
+        if not lines:
+            return
+        self.configure(state="normal")
+        for line in lines:
+            self.insert("end", line + "\n")
+        # keep last 400 lines
+        total = int(self.index("end-1c").split(".")[0])
+        if total > 400:
+            self.delete("1.0", f"{total-400}.0")
+        self.see("end")
+        self.configure(state="disabled")
+
+
+class StatusDot(ctk.CTkLabel):
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, text="●", font=("Consolas", 14),
+                         text_color=MUTED, **kwargs)
+
+    def set_color(self, color):
+        self.configure(text_color=color)
+
+
+class LandingCard(ctk.CTkFrame):
+    def __init__(self, parent, fpm, g_force, **kwargs):
+        super().__init__(parent, fg_color=CARD, corner_radius=8,
+                         border_width=1, border_color=BORDER, **kwargs)
+        col = GREEN if abs(fpm) < 200 else YELLOW if abs(fpm) < 400 else RED
+        ctk.CTkLabel(self, text=f"{fpm:+.0f} fpm",
+                     font=("Consolas", 14, "bold"),
+                     text_color=col).pack(side="left", padx=12, pady=8)
+        ctk.CTkLabel(self, text=f"{g_force:.2f} G",
+                     font=("Consolas", 12),
+                     text_color=MUTED).pack(side="right", padx=12)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  SCREEN: LOGIN
+# ═════════════════════════════════════════════════════════════════════════════
+
+class LoginScreen(ctk.CTkFrame):
+    def __init__(self, parent, on_success):
+        super().__init__(parent, fg_color=BG)
+        self.on_success = on_success
+        self._build()
+
+    def _build(self):
+        center = ctk.CTkFrame(self, fg_color="transparent")
+        center.place(relx=0.5, rely=0.5, anchor="center")
+
+        # Logo
+        ctk.CTkLabel(center, text="CSABOLANTA",
+                     font=("Georgia", 32, "bold", "italic"),
+                     text_color=WHITE).pack(pady=(0, 2))
+        ctk.CTkLabel(center, text="X-PLANE & MSFS FLIGHT TRACKER",
+                     font=("Consolas", 9, "bold"),
+                     text_color=ACCENT).pack(pady=(0, 30))
+
+        # Card
+        card = ctk.CTkFrame(center, fg_color=SIDEBAR, corner_radius=12,
+                             border_width=1, border_color=BORDER, width=380)
+        card.pack(padx=0, pady=0)
+        card.pack_propagate(False)
+        card.configure(height=200)
+
+        inner = ctk.CTkFrame(card, fg_color="transparent")
+        inner.pack(fill="both", expand=True, padx=24, pady=24)
+
+        SectionLabel(inner, "API Key").pack(anchor="w", pady=(0, 6))
+        self.key_entry = StyledEntry(inner, placeholder_text="Paste your API key…",
+                                     show="•", width=330)
+        self.key_entry.pack(fill="x")
+
+        self.status_lbl = ctk.CTkLabel(inner, text="",
+                                        font=("Consolas", 11),
+                                        text_color=RED)
+        self.status_lbl.pack(pady=(8, 0))
+
+        AccentButton(inner, text="Authenticate →",
+                     command=self._auth).pack(fill="x", pady=(12, 0))
+
+        # Pre-fill saved token
+        TOKEN_FILE = ".xtracker_token"
+        if os.path.exists(TOKEN_FILE):
+            with open(TOKEN_FILE) as f:
+                saved = f.read().strip()
+            self.key_entry.insert(0, saved)
+            self.key_entry.configure(show="•")
+
+    def _set_status(self, text, color):
+        """Safe status update — no-ops if widget was already destroyed."""
+        try:
+            self.status_lbl.configure(text=text, text_color=color)
+        except Exception:
+            pass
+
+    def _auth(self):
+        token = self.key_entry.get().strip()
+        if not token:
+            self._set_status("Enter your API key.", YELLOW)
+            return
+        self._set_status("Verifying\u2026", MUTED)
+
+        def worker():
+            try:
+                r = requests.get(
+                    f"{API_BASE_URL}/user",
+                    headers={"Authorization": f"Bearer {token}",
+                             "Accept": "application/json"},
+                    timeout=8,
+                )
+                if r.status_code == 200:
+                    user = r.json()
+                    with open(".xtracker_token", "w") as f:
+                        f.write(token)
+                    self.after(0, self.on_success, token, user.get("name", "Pilot"), API_BASE_URL)
+                else:
+                    self.after(0, self._set_status, "Invalid API key.", RED)
+            except Exception as e:
+                self.after(0, self._set_status, f"Server error: {e}", RED)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  SCREEN: SETUP (sim, simbrief, flight info)
+# ═════════════════════════════════════════════════════════════════════════════
+
+class SetupScreen(ctk.CTkFrame):
+    def __init__(self, parent, user_name, on_start):
+        super().__init__(parent, fg_color=BG)
+        self.user_name = user_name
+        self.on_start = on_start
+        self._sb_data = {}
+        self._build()
+
+    def _build(self):
+        # ── Header bar
+        bar = ctk.CTkFrame(self, fg_color=SIDEBAR, height=52,
+                           corner_radius=0, border_width=0)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+        ctk.CTkLabel(bar, text="CSABOLANTA",
+                     font=("Georgia", 16, "bold", "italic"),
+                     text_color=WHITE).pack(side="left", padx=20)
+        ctk.CTkLabel(bar, text=f"Welcome, {self.user_name}",
+                     font=("Consolas", 11), text_color=ACCENT).pack(side="right", padx=20)
+
+        # ── Two-column setup
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=40, pady=30)
+
+        left = ctk.CTkFrame(body, fg_color=SIDEBAR, corner_radius=12,
+                            border_width=1, border_color=BORDER)
+        left.pack(side="left", fill="both", expand=True, padx=(0, 12))
+
+        right = ctk.CTkFrame(body, fg_color=SIDEBAR, corner_radius=12,
+                             border_width=1, border_color=BORDER)
+        right.pack(side="left", fill="both", expand=True, padx=(12, 0))
+
+        self._build_sim_col(left)
+        self._build_flight_col(right)
+
+        # ── Start button
+        AccentButton(self, text="▶  Start Tracking",
+                     command=self._start, height=44,
+                     font=("Consolas", 14, "bold")).pack(
+            fill="x", padx=40, pady=(0, 30))
+
+    def _build_sim_col(self, parent):
+        p = ctk.CTkFrame(parent, fg_color="transparent")
+        p.pack(fill="both", expand=True, padx=20, pady=20)
+
+        SectionLabel(p, "Simulator").pack(anchor="w", pady=(0, 8))
+        self.sim_var = ctk.StringVar(value="X-Plane")
+        for sim in ("X-Plane", "MSFS 2024"):
+            rb = ctk.CTkRadioButton(p, text=sim, variable=self.sim_var, value=sim,
+                                    font=("Consolas", 12),
+                                    text_color=WHITE,
+                                    fg_color=ACCENT,
+                                    border_color=BORDER)
+            rb.pack(anchor="w", pady=3)
+
+        Divider(p).pack(fill="x", pady=14)
+
+        SectionLabel(p, "Host IP (X-Plane)").pack(anchor="w", pady=(0, 6))
+        self.host_entry = StyledEntry(p, placeholder_text="127.0.0.1")
+        self.host_entry.insert(0, ARGS.host)
+        self.host_entry.pack(fill="x")
+
+        Divider(p).pack(fill="x", pady=14)
+
+        SectionLabel(p, "SimBrief Pilot ID").pack(anchor="w", pady=(0, 6))
+        sb_row = ctk.CTkFrame(p, fg_color="transparent")
+        sb_row.pack(fill="x")
+        self.sb_entry = StyledEntry(sb_row, placeholder_text="Optional…")
+        self.sb_entry.pack(side="left", fill="x", expand=True)
+
+        saved_sb = ""
+        if os.path.exists(".simbrief_id"):
+            with open(".simbrief_id") as f:
+                saved_sb = f.read().strip()
+        if saved_sb:
+            self.sb_entry.insert(0, saved_sb)
+
+        GhostButton(sb_row, text="Fetch", width=64,
+                    command=self._fetch_sb).pack(side="left", padx=(6, 0))
+
+        self.sb_status = ctk.CTkLabel(p, text="", font=("Consolas", 10),
+                                       text_color=MUTED)
+        self.sb_status.pack(anchor="w", pady=(4, 0))
+
+    def _build_flight_col(self, parent):
+        p = ctk.CTkFrame(parent, fg_color="transparent")
+        p.pack(fill="both", expand=True, padx=20, pady=20)
+
+        SectionLabel(p, "Flight Details").pack(anchor="w", pady=(0, 12))
+
+        fields = [
+            ("Callsign",      "callsign"),
+            ("Flight Number", "flight_no"),
+            ("Airline",       "airline"),
+            ("Registration",  "reg"),
+            ("Aircraft Type", "ac_type"),
+        ]
+        self._entries = {}
+        for label, key in fields:
+            SectionLabel(p, label).pack(anchor="w", pady=(0, 4))
+            e = StyledEntry(p, placeholder_text="—")
+            e.pack(fill="x", pady=(0, 8))
+            self._entries[key] = e
+
+    def _fetch_sb(self):
+        sb_id = self.sb_entry.get().strip()
+        if not sb_id:
+            self.sb_status.configure(text="Enter a Pilot ID first.", text_color=YELLOW)
+            return
+        self.sb_status.configure(text="Fetching…", text_color=MUTED)
+        self.update()
+        try:
+            with open(".simbrief_id", "w") as f:
+                f.write(sb_id)
+            url = f"https://www.simbrief.com/api/xml.fetcher.php?userid={sb_id}&json=1"
+            r = requests.get(url, timeout=10)
+            if r.status_code == 200:
+                d = r.json()
+                gen = d.get("general", {})
+                ac  = d.get("aircraft", {})
+                atc = d.get("atc", {})
+                airline_code = gen.get("icao_airline", "")
+                flight_no    = gen.get("flight_number", "")
+                callsign     = atc.get("callsign") or f"{airline_code}{flight_no}"
+                self._sb_data = {
+                    "callsign": callsign,
+                    "full_flight_number": f"{airline_code}{flight_no}",
+                    "airline": airline_code,
+                    "ac_type": ac.get("icaocode", ""),
+                    "reg": ac.get("reg", ""),
+                }
+                for key, val in [
+                    ("callsign", callsign),
+                    ("flight_no", f"{airline_code}{flight_no}"),
+                    ("reg", ac.get("reg", "")),
+                    ("ac_type", ac.get("icaocode", "")),
+                ]:
+                    self._entries[key].delete(0, "end")
+                    self._entries[key].insert(0, val)
+                self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN)
+            else:
+                self.sb_status.configure(text="Flight plan not found.", text_color=RED)
+        except Exception as e:
+            self.sb_status.configure(text=f"Error: {e}", text_color=RED)
+
+    def _start(self):
+        cfg = {
+            "sim":     self.sim_var.get(),
+            "host":    self.host_entry.get().strip() or "127.0.0.1",
+            "callsign": self._entries["callsign"].get().strip() or "unknown",
+            "flight_no": self._entries["flight_no"].get().strip() or "unknown",
+            "airline":  self._entries["airline"].get().strip() or "unknown",
+            "reg":      self._entries["reg"].get().strip(),
+            "ac_type":  self._entries["ac_type"].get().strip() or "unknown",
+        }
+        self.on_start(cfg)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  SCREEN: TRACKING
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TrackingScreen(ctk.CTkFrame):
+    def __init__(self, parent, cfg, token, api_base, user_name):
+        super().__init__(parent, fg_color=BG)
+        self.cfg = cfg
+        self.token = token
+        self.api_base = api_base
+        self.user_name = user_name
+
+        self.flight_path_data = {
+            "metadata": {
+                "callsign": cfg["callsign"],
+                "flight_number": cfg["flight_no"],
+                "airline": cfg["airline"],
+                "aircraft_registration": cfg["reg"],
+                "aircraft_type": cfg["ac_type"],
+                "simulator": cfg["sim"],
+                "start_time": datetime.now().isoformat(),
+                "columns": ["timestamp", "lat", "lon", "alt", "speed"],
+            },
+            "path": [],
+            "landings": [],
         }
 
-        try:
-            requests.post(webhook_url, json=payload, timeout=5)
-        except Exception as e:
-            log(f"[bold red]Webhook Error:[/bold red] {e}")
+        self.current_telemetry = {}
+        self.landing_buffer = []
+        self.buffer_lock = threading.Lock()
+        self.buffer_timer = None
+        self._tracking = True
+        self._provider = None
 
-        landing_buffer = []
-        buffer_timer = None
+        self._last_lat = self._last_lon = self._last_alt = self._last_speed = None
+        self._last_log_time = 0
+        self._last_autosave_time = time.time()
 
-def fetch_simbrief_data(pilot_id):
-    if not pilot_id or pilot_id.strip() == "":
-        return {}
-    
-    try:
-        with console.status(f"[bold cyan]Fetching SimBrief data for Pilot ID {pilot_id}...[/bold cyan]"):
-            url = f"https://www.simbrief.com/api/xml.fetcher.php?userid={pilot_id}&json=1"
-            response = requests.get(url, timeout=10)
-            
-            if response.status_code == 200:
-                data = response.json()
-                
-                gen = data.get('general', {})
-                ac = data.get('aircraft', {})
-                atc = data.get('atc', {})
-                
-                raw_airline = gen.get('icao_airline', '')
-                raw_flight_no = gen.get('flight_number', '')
-                
-                # Callsign comes directly from the ATC block
-                callsign = atc.get('callsign')
-                if not callsign or callsign == "":
-                    callsign = f"{raw_airline}{raw_flight_no}" if raw_airline else 'unknown'
-                
-                # Flight number is the combined string
-                full_flight_number = f"{raw_airline}{raw_flight_no}" if raw_airline else 'unknown'
-                
-                return {
-                    'callsign': callsign,
-                    'full_flight_number': full_flight_number,
-                    'airline': raw_airline if raw_airline else 'unknown',
-                    'ac_type': ac.get('icaocode', 'unknown'),
-                    'reg': ac.get('reg', ''),
-                }
-            else:
-                warn("SimBrief flight plan not found or invalid ID.")
-                return {}
-    except Exception as e:
-        warn(f"Failed to fetch SimBrief data: {e}")
-        return {}
-
-def get_airline_name(code):
-    if not code or code.lower() == "unknown":
-        return "unknown"
-        
-    code = code.strip().upper()
-    url = "https://raw.githubusercontent.com/npow/airline-codes/master/airlines.json"
-    
-    try:
-        response = requests.get(url, timeout=5)
-        if response.status_code == 200:
-            airlines = response.json()
-            for airline in airlines:
-                if airline.get("iata") == code or airline.get("icao") == code:
-                    return airline.get("name")
-        return "unknown"
-    except Exception as e:
-        return code
-
-try:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--logout", action="store_true")
-    parser.add_argument("--dev", action="store_true")
-    parser.add_argument("--no-webhook", action="store_true", help="Disable Discord webhook notifications")
-    parser.add_argument("--update-simbrief", action="store_true", help="Prompt to update the saved SimBrief ID")
-    args = parser.parse_args()
-
-    TOKEN_FILE = ".xtracker_token"
-    SIMBRIEF_FILE = ".simbrief_id"
-    
-    API_BASE_URL = "http://xtracker.local:5173/api" if args.dev else "https://api.csabolanta.hu/api"
-    API_FLIGHTS_URL = f"{API_BASE_URL}/flights"
-    API_USER_URL = f"{API_BASE_URL}/user"
-
-    header()
-
-    if args.logout:
-        if os.path.exists(TOKEN_FILE):
-            os.remove(TOKEN_FILE)
-            ok("Logged out successfully.")
-        else:
-            warn("Not logged in.")
-        sys.exit(0)
-
-    if os.path.exists(TOKEN_FILE):
-        with open(TOKEN_FILE, "r") as f: TOKEN = f.read().strip()
-        ok("Saved API Key loaded.")
-    else:
-        TOKEN = Prompt.ask("[bold cyan]Paste your API Key[/bold cyan]").strip()
-        with open(TOKEN_FILE, "w") as f: f.write(TOKEN)
-
-    auth_headers = {'Accept': 'application/json', 'Authorization': f'Bearer {TOKEN}'}
-
-    try:
-        with console.status("[bold cyan]Verifying Auth...[/bold cyan]"):
-            user_res = requests.get(API_USER_URL, headers=auth_headers)
-        if user_res.status_code == 200:
-            user_name = user_res.json().get('name', 'Pilot')
-            ok(f"Authenticated as [bold]{user_name}[/bold]")
-        else:
-            err("Invalid API Key.")
-            os.remove(TOKEN_FILE)
-            console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
-            sys.exit(1)
-    except Exception as e:
-        err(f"Server error: {e}")
-        console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
-        sys.exit(1)
-
-    sim_choice = simulator_selector()
-    provider = XPlaneProvider(ip=args.host) if sim_choice == "X-Plane" else MSFSProvider()
-
-    step(f"Connecting to {sim_choice}...")
-    try:
-        provider.connect()
-        ok("Connected!")
-    except Exception as e:
-        err(f"Connection failed: {e}")
-        console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
-        sys.exit(1)
-
-    # --- SIMBRIEF & AIRLINE LOGIC ---
-    saved_sb_id = ""
-    if os.path.exists(SIMBRIEF_FILE):
-        with open(SIMBRIEF_FILE, "r") as f: 
-            saved_sb_id = f.read().strip()
-
-    sb_id = saved_sb_id
-    
-    if not saved_sb_id or args.update_simbrief:
-        sb_id = Prompt.ask("\n[bold magenta]SimBrief Pilot ID[/bold magenta]", default=saved_sb_id)
-        if sb_id:
-            with open(SIMBRIEF_FILE, "w") as f:
-                f.write(sb_id)
-    else:
-        info(f"Using saved SimBrief ID: {sb_id} (Run with --update-simbrief to change)")
-        print("") # clean spacing
-            
-    sb_data = fetch_simbrief_data(sb_id)
-    
-    # Translate the raw airline code to a full name
-    raw_airline_code = sb_data.get('airline', 'unknown')
-    full_airline_name = "unknown"
-    if raw_airline_code != 'unknown':
-        with console.status("[bold cyan]Translating Airline Code...[/bold cyan]"):
-            full_airline_name = get_airline_name(raw_airline_code)
-    
-    callsign = Prompt.ask("[bold magenta]Callsign[/bold magenta]", default=sb_data.get('callsign', 'unknown'))
-    flight_no = Prompt.ask("[bold magenta]Flight Number[/bold magenta]", default=sb_data.get('full_flight_number', 'unknown'))
-    airline = Prompt.ask("[bold magenta]Airline[/bold magenta]", default=full_airline_name)
-    reg = Prompt.ask("[bold magenta]Registration[/bold magenta]", default=sb_data.get('reg', ''))
-    ac_type = Prompt.ask("[bold magenta]Aircraft Type[/bold magenta]", default=sb_data.get('ac_type', 'unknown'))
-
-    print("") # Empty line for cleaner UI
-
-    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_filename = f"flights/flight_{callsign}_{timestamp_str}"
-    
-    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         os.makedirs("flights", exist_ok=True)
-    except Exception as e:
-        err(f"Could not create flights directory: {e}")
+        self._base_filename = f"flights/flight_{cfg['callsign']}_{ts}"
 
-    flight_path_data = {
-        "metadata": {
-            "callsign": callsign, "flight_number": flight_no, "airline": airline,
-            "aircraft_registration": reg, "aircraft_type": ac_type, "simulator": sim_choice,
-            "start_time": datetime.now().isoformat(),
-            "columns": ["timestamp", "lat", "lon", "alt", "speed"]
-        },
-        "path": [], "landings": []
-    }
+        self._build()
+        self._start_tracking()
 
-    def save_flight_to_disk(target_path, data):
-        try:
-            with gzip.open(target_path, "wt", encoding="utf-8") as f:
-                json.dump(data, f, separators=(',', ':'))
-        except Exception as e:
-            err(f"Disk save error: {e}")
+    # ── Layout ────────────────────────────────────────────────────────────────
 
-    def landing_monitor():
-        global current_telemetry, landing_buffer, buffer_timer
-        was_on_ground = True
-        while True:
+    def _build(self):
+        # Header
+        bar = ctk.CTkFrame(self, fg_color=SIDEBAR, height=52, corner_radius=0)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+
+        left_bar = ctk.CTkFrame(bar, fg_color="transparent")
+        left_bar.pack(side="left", padx=16, pady=8)
+        ctk.CTkLabel(left_bar, text="CSABOLANTA",
+                     font=("Georgia", 15, "bold", "italic"),
+                     text_color=WHITE).pack(side="left")
+        ctk.CTkLabel(left_bar, text=" / TRACKING",
+                     font=("Consolas", 11), text_color=ACCENT).pack(side="left")
+        if ARGS.dev:
+            ctk.CTkLabel(left_bar, text=" [DEV]",
+                         font=("Consolas", 11, "bold"),
+                         text_color=YELLOW).pack(side="left")
+        if ARGS.no_webhook:
+            ctk.CTkLabel(left_bar, text=" [NO WEBHOOK]",
+                         font=("Consolas", 10),
+                         text_color=MUTED).pack(side="left")
+
+        right_bar = ctk.CTkFrame(bar, fg_color="transparent")
+        right_bar.pack(side="right", padx=16)
+        self.status_dot = StatusDot(right_bar)
+        self.status_dot.pack(side="left", padx=(0, 6))
+        self.status_lbl = ctk.CTkLabel(right_bar, text="Connecting…",
+                                        font=("Consolas", 11), text_color=MUTED)
+        self.status_lbl.pack(side="left")
+
+        # Body: sidebar + log
+        body = ctk.CTkFrame(self, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=16, pady=12)
+
+        # Left sidebar
+        sidebar = ctk.CTkFrame(body, fg_color=SIDEBAR, corner_radius=12,
+                               border_width=1, border_color=BORDER, width=220)
+        sidebar.pack(side="left", fill="y", padx=(0, 12))
+        sidebar.pack_propagate(False)
+        self._build_sidebar(sidebar)
+
+        # Right: telemetry + log
+        right = ctk.CTkFrame(body, fg_color="transparent")
+        right.pack(side="left", fill="both", expand=True)
+
+        # Telemetry strip
+        telem = ctk.CTkFrame(right, fg_color=SIDEBAR, corner_radius=10,
+                              border_width=1, border_color=BORDER, height=70)
+        telem.pack(fill="x", pady=(0, 10))
+        telem.pack_propagate(False)
+        self._build_telemetry(telem)
+
+        # Log
+        log_header = ctk.CTkFrame(right, fg_color="transparent", height=24)
+        log_header.pack(fill="x")
+        SectionLabel(log_header, "Live Log").pack(side="left")
+
+        self.logbox = LogBox(right)
+        self.logbox.pack(fill="both", expand=True)
+
+        # Stop button
+        GhostButton(self, text="■  Stop & Upload",
+                    text_color=RED, border_color=RED,
+                    hover_color="#2a1a1a",
+                    command=self._stop).pack(fill="x", padx=16, pady=(8, 12))
+
+    def _build_sidebar(self, parent):
+        p = ctk.CTkFrame(parent, fg_color="transparent")
+        p.pack(fill="both", expand=True, padx=14, pady=14)
+
+        # Flight badge
+        badge = ctk.CTkFrame(p, fg_color=CARD, corner_radius=8,
+                              border_width=1, border_color=BORDER)
+        badge.pack(fill="x", pady=(0, 14))
+        ctk.CTkLabel(badge, text=self.cfg["callsign"],
+                     font=("Georgia", 18, "bold"), text_color=WHITE).pack(pady=(10, 2))
+        ctk.CTkLabel(badge, text=self.cfg["flight_no"],
+                     font=("Consolas", 10), text_color=ACCENT).pack(pady=(0, 4))
+        ctk.CTkLabel(badge, text=self.cfg["ac_type"],
+                     font=("Consolas", 10), text_color=MUTED).pack(pady=(0, 10))
+
+        Divider(p).pack(fill="x", pady=(0, 12))
+
+        SectionLabel(p, "Landings").pack(anchor="w", pady=(0, 8))
+        self.landings_frame = ctk.CTkScrollableFrame(p, fg_color="transparent",
+                                                      height=260,
+                                                      scrollbar_button_color=BORDER)
+        self.landings_frame.pack(fill="x")
+
+        self._no_landing_lbl = ctk.CTkLabel(
+            self.landings_frame,
+            text="Waiting for touchdown…",
+            font=("Consolas", 10),
+            text_color=MUTED,
+        )
+        self._no_landing_lbl.pack(pady=10)
+
+        Divider(p).pack(fill="x", pady=12)
+
+        SectionLabel(p, "Stats").pack(anchor="w", pady=(0, 8))
+        self._stat_labels = {}
+        for key in ("Points recorded", "Landings", "Autosaves"):
+            row = ctk.CTkFrame(p, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+            ctk.CTkLabel(row, text=key, font=("Consolas", 10),
+                         text_color=MUTED).pack(side="left")
+            lbl = ctk.CTkLabel(row, text="0", font=("Consolas", 10, "bold"),
+                               text_color=WHITE)
+            lbl.pack(side="right")
+            self._stat_labels[key] = lbl
+
+        self._autosave_count = 0
+
+    def _build_telemetry(self, parent):
+        fields = [("LAT", "lat"), ("LON", "lon"), ("ALT", "alt"), ("GS", "gs")]
+        self._telem_labels = {}
+        inner = ctk.CTkFrame(parent, fg_color="transparent")
+        inner.pack(expand=True, fill="both", padx=16)
+        for i, (label, key) in enumerate(fields):
+            col = ctk.CTkFrame(inner, fg_color="transparent")
+            col.grid(row=0, column=i*2, padx=(0, 4), pady=12, sticky="ns")
+            ctk.CTkLabel(col, text=label, font=("Consolas", 9, "bold"),
+                         text_color=MUTED).pack()
+            lbl = ctk.CTkLabel(col, text="—", font=("Consolas", 14, "bold"),
+                               text_color=WHITE)
+            lbl.pack()
+            self._telem_labels[key] = lbl
+            if i < len(fields)-1:
+                sep = ctk.CTkFrame(inner, fg_color=BORDER, width=1)
+                sep.grid(row=0, column=i*2+1, sticky="ns", pady=12, padx=8)
+
+        for c in range(len(fields)*2-1):
+            inner.columnconfigure(c, weight=1 if c % 2 == 0 else 0)
+
+    # ── Tracking core ─────────────────────────────────────────────────────────
+
+    def _start_tracking(self):
+        def worker():
             try:
-                data = current_telemetry
+                self._provider = load_provider(self.cfg["sim"], self.cfg["host"])
+                self._provider.connect()
+                self._update_status("● Tracking", GREEN)
+                self._log(f"Connected to {self.cfg['sim']}")
+            except Exception as e:
+                self._update_status("✖ Connection failed", RED)
+                self._log(f"ERROR: {e}")
+                return
+
+            # Landing monitor
+            threading.Thread(target=self._landing_monitor, daemon=True).start()
+
+            # Telemetry loop
+            while self._tracking:
+                try:
+                    data = self._provider.get_telemetry()
+                    self.current_telemetry = data
+
+                    if "error" in data:
+                        self._log(f"ERROR: {data['error']}")
+                        time.sleep(2)
+                        continue
+
+                    lat  = data.get("lat")
+                    lon  = data.get("lon")
+                    alt  = data.get("alt")
+                    speed = data.get("gs")
+                    now  = time.time()
+
+                    # Autosave every 2 min
+                    if now - self._last_autosave_time > 120:
+                        self._autosave()
+
+                    # Update telemetry display (throttled via after)
+                    self.after(0, self._update_telem, lat, lon, alt, speed)
+
+                    if lat is not None and lon is not None:
+                        should_record = False
+                        state_changed = (lat != self._last_lat or lon != self._last_lon
+                                         or alt != self._last_alt or speed != self._last_speed)
+                        safe_speed = speed or 0
+
+                        if safe_speed == 0:
+                            if state_changed:
+                                should_record = True
+                        else:
+                            interval = 0.5 if safe_speed > 350 else 0.25 if safe_speed >= 250 else 0.1
+                            if (now - self._last_log_time) >= interval:
+                                should_record = True
+
+                        if should_record:
+                            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                            self._log(
+                                f"{ts}  LAT:{lat:.5f}  LON:{lon:.5f}  ALT:{alt}ft  GS:{safe_speed}kts"
+                            )
+                            self.flight_path_data["path"].append(
+                                [round(now, 2), round(lat, 5), round(lon, 5), alt, safe_speed]
+                            )
+                            self._last_lat, self._last_lon = lat, lon
+                            self._last_alt, self._last_speed = alt, speed
+                            self._last_log_time = now
+
+                            self.after(0, self._update_stats)
+
+                    time.sleep(0.1)
+                except Exception as e:
+                    logging.error(f"Telemetry loop error: {e}")
+                    time.sleep(0.5)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _landing_monitor(self):
+        was_on_ground = True
+        while self._tracking:
+            try:
+                data = self.current_telemetry
                 on_ground = data.get("on_ground")
-                
                 if on_ground is not None:
                     if not was_on_ground and on_ground:
-                        touchdown_fpm = data.get("fpm", 0)
-                        g_force = data.get('gforce', 0)
-                        
-                        log(f"[bold green]LANDING[/bold green] {touchdown_fpm:.0f} FPM")
-                        
-                        flight_path_data["landings"].append({
-                            "timestamp": round(time.time(), 2), "fpm": round(touchdown_fpm, 2),
+                        fpm     = data.get("fpm", 0)
+                        g_force = data.get("gforce", 0)
+                        self._log(f"LANDING  {fpm:+.0f} FPM  {g_force:.2f}G")
+                        self.flight_path_data["landings"].append({
+                            "timestamp": round(time.time(), 2),
+                            "fpm": round(fpm, 2),
                             "g_force": round(g_force, 2),
-                            "lat": round(data.get('lat', 0), 5), "lon": round(data.get('lon', 0), 5)
+                            "lat": round(data.get("lat", 0), 5),
+                            "lon": round(data.get("lon", 0), 5),
                         })
+                        self.after(0, self._add_landing_card, fpm, g_force)
 
-                        with buffer_lock:
-                            landing_buffer.append({'fpm': touchdown_fpm, 'g': g_force})
-                            if buffer_timer is None:
-                                buffer_timer = threading.Timer(10.0, send_landing_webhook)
-                                buffer_timer.start()
+                        with self.buffer_lock:
+                            self.landing_buffer.append({"fpm": fpm, "g": g_force})
+                            if self.buffer_timer is None:
+                                self.buffer_timer = threading.Timer(10.0, self._send_webhook)
+                                self.buffer_timer.start()
 
                     was_on_ground = on_ground
             except Exception as e:
-                logging.error(f"Landing monitor thread error: {e}")
+                logging.error(f"Landing monitor error: {e}")
             time.sleep(0.1)
 
-    threading.Thread(target=landing_monitor, daemon=True).start()
+    def _add_landing_card(self, fpm, g_force):
+        if self._no_landing_lbl:
+            self._no_landing_lbl.destroy()
+            self._no_landing_lbl = None
+        card = LandingCard(self.landings_frame, fpm, g_force)
+        card.pack(fill="x", pady=(0, 4))
 
-    last_lat, last_lon, last_alt, last_speed = None, None, None, None
-    last_log_time = 0
-    last_autosave_time = time.time()
-    layout = build_layout()
+    def _update_telem(self, lat, lon, alt, speed):
+        def fmt(v, decimals=5):
+            return f"{v:.{decimals}f}" if v is not None else "—"
+        self._telem_labels["lat"].configure(text=fmt(lat, 5))
+        self._telem_labels["lon"].configure(text=fmt(lon, 5))
+        self._telem_labels["alt"].configure(text=fmt(alt, 0) if alt is not None else "—")
+        self._telem_labels["gs"].configure(text=f"{int(speed or 0)} kts")
 
-    try:
-        with Live(layout, refresh_per_second=10, screen=False):
-            while True:
-                data = provider.get_telemetry()
-                current_telemetry = data
-                
-                if "error" in data:
-                    log(f"[bold red]ERROR:[/bold red] {data['error']}. Check Simulator.")
-                    time.sleep(2); continue
-                
-                lat, lon, alt, speed = data.get("lat"), data.get("lon"), data.get("alt"), data.get("gs")
-                now = time.time()
+    def _update_status(self, text, color):
+        self.after(0, lambda: (
+            self.status_lbl.configure(text=text, text_color=color),
+            self.status_dot.set_color(color),
+        ))
 
-                if now - last_autosave_time > 120:
-                    autosave_path = f"{base_filename}_autosaved.json.gz"
-                    save_flight_to_disk(autosave_path, flight_path_data)
-                    log("[bold blue]AUTOSAVE[/bold blue] Data synced to disk.")
-                    last_autosave_time = now
+    def _update_stats(self):
+        pts = len(self.flight_path_data["path"])
+        ldg = len(self.flight_path_data["landings"])
+        self._stat_labels["Points recorded"].configure(text=str(pts))
+        self._stat_labels["Landings"].configure(text=str(ldg))
+        self._stat_labels["Autosaves"].configure(text=str(self._autosave_count))
 
-                if lat is not None and lon is not None:
-                    should_record = False
-                    state_changed = (lat != last_lat or lon != last_lon or alt != last_alt or speed != last_speed)
+    def _log(self, msg: str):
+        logging.info(clean_text(msg))
+        self.logbox.append(msg)
 
-                    safe_speed = speed if speed is not None else 0
+    def _autosave(self):
+        path = f"{self._base_filename}_autosaved.json.gz"
+        self._save_to_disk(path)
+        self._autosave_count += 1
+        self._log("AUTOSAVE — data synced to disk")
+        self.after(0, self._update_stats)
+        self._last_autosave_time = time.time()
 
-                    if safe_speed == 0:
-                        if state_changed:
-                            should_record = True
-                    else:
-                        interval = 0.1
-                        if safe_speed > 350:
-                            interval = 0.5
-                        elif safe_speed >= 250:
-                            interval = 0.25
-                            
-                        if (now - last_log_time) >= interval:
-                            should_record = True
-
-                    if should_record:
-                        formatted_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                        log(f"[dim]{formatted_time}[/dim] [bold cyan]LAT[/bold cyan]: {lat:.5f} [bold cyan]LON[/bold cyan]: {lon:.5f} [bold yellow]ALT[/bold yellow]: {alt}ft [bold green]GS[/bold green]: {safe_speed}kts")
-                        flight_path_data["path"].append([round(now, 2), round(lat, 5), round(lon, 5), alt, safe_speed])
-                        
-                        last_lat, last_lon, last_alt, last_speed = lat, lon, alt, speed
-                        last_log_time = now
-
-                layout["status"].update(tracking_banner())
-                layout["landings"].update(build_landings_panel(flight_path_data["landings"]))
-                layout["body"].update(build_log_panel())
-                time.sleep(0.1)
-
-    except KeyboardInterrupt:
-        final_filename = f"{base_filename}.json.gz"
-        autosave_filename = f"{base_filename}_autosaved.json.gz"
-        
-        save_flight_to_disk(final_filename, flight_path_data)
-        ok(f"Final data saved to [bold]{final_filename}[/bold]")
-        
-        if os.path.exists(autosave_filename):
-            try:
-                os.remove(autosave_filename)
-                info("Cleanup: Autosave file removed.")
-            except Exception as e:
-                warn(f"Failed to remove autosave: {e}")
-        
+    def _save_to_disk(self, path):
         try:
-            with console.status("[bold cyan]Uploading flight...[/bold cyan]"):
-                with open(final_filename, 'rb') as f:
-                    files = {'flight_file': (os.path.basename(final_filename), f, 'application/gzip')}
-                    
-                    upload_data = {}
-                    if reg:
-                        upload_data['aircraft_registration'] = reg
-                    if ac_type:
-                        upload_data['aircraft_type'] = ac_type
-                        
-                    response = requests.post(API_FLIGHTS_URL, files=files, data=upload_data, headers=auth_headers)
-
-            if response.status_code == 201:
-                ok("Upload successful!")
-                if Prompt.ask("\n[bold yellow]Delete local file?[/bold yellow]", choices=["y", "n"], default="y") == 'y':
-                    try:
-                        os.remove(final_filename)
-                        ok("Local file deleted.")
-                    except Exception as e:
-                        err(f"Failed to delete local file: {e}")
-            else:
-                err(f"Upload failed: {response.status_code}")
-                console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
+            with gzip.open(path, "wt", encoding="utf-8") as f:
+                json.dump(self.flight_path_data, f, separators=(",", ":"))
         except Exception as e:
-            err(f"Upload error: {e}")
-            console.input("[bold yellow]Press Enter to exit...[/bold yellow]")
-        
-        provider.close()
+            self._log(f"Disk save error: {e}")
 
-except Exception as fatal_error:
-    logging.exception("Fatal unhandled application error occurred")
-    print(f"\nFATAL ERROR: {fatal_error}")
-    input("\nPress Enter to exit...")
+    def _send_webhook(self):
+        if ARGS.no_webhook:
+            with self.buffer_lock:
+                self.landing_buffer = []
+                self.buffer_timer = None
+            return
+        webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+        if not webhook_url:
+            return
+        meta = self.flight_path_data.get("metadata", {})
+        with self.buffer_lock:
+            lines = [f"**{l['fpm']:.0f} fpm** | **{l['g']:.2f} g**"
+                     for l in self.landing_buffer]
+            payload = {
+                "embeds": [{
+                    "title": f"{self.user_name} muro phral megérkezett, shavale!",
+                    "description": "\n".join(lines),
+                    "color": 0x38bdf8,
+                    "fields": [
+                        {"name": "Callsign",     "value": meta.get("callsign", "N/A"),              "inline": True},
+                        {"name": "Flight No",    "value": meta.get("flight_number", "N/A"),         "inline": True},
+                        {"name": "Registration", "value": meta.get("aircraft_registration") or "N/A","inline": True},
+                        {"name": "Aircraft",     "value": meta.get("aircraft_type", "N/A"),         "inline": True},
+                        {"name": "Simulator",    "value": meta.get("simulator", "N/A"),             "inline": True},
+                    ],
+                    "footer": {"text": "csabolanta.hu"},
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }]
+            }
+            try:
+                requests.post(webhook_url, json=payload, timeout=5)
+            except Exception as e:
+                self._log(f"Webhook error: {e}")
+            self.landing_buffer = []
+            self.buffer_timer = None
+
+    # ── Stop & upload ─────────────────────────────────────────────────────────
+
+    def _stop(self):
+        self._tracking = False
+        if self._provider:
+            try:
+                self._provider.close()
+            except Exception:
+                pass
+
+        final = f"{self._base_filename}.json.gz"
+        autosave = f"{self._base_filename}_autosaved.json.gz"
+        self._save_to_disk(final)
+        self._log(f"Saved → {final}")
+
+        if os.path.exists(autosave):
+            try:
+                os.remove(autosave)
+            except Exception:
+                pass
+
+        self._update_status("Uploading…", YELLOW)
+
+        # Find the App root to navigate back to setup after upload
+        app_root = self.winfo_toplevel()
+        UploadDialog(self, final, self.token, self.api_base,
+                     self.cfg.get("reg", ""), self.cfg.get("ac_type", ""),
+                     on_done=lambda: app_root.after(0, app_root._show_setup))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  DIALOG: UPLOAD
+# ═════════════════════════════════════════════════════════════════════════════
+
+class UploadDialog(ctk.CTkToplevel):
+    def __init__(self, parent, filepath, token, api_base, reg, ac_type, on_done=None):
+        super().__init__(parent)
+        self.filepath = filepath
+        self.token = token
+        self.api_base = api_base
+        self.reg = reg
+        self.ac_type = ac_type
+        self.on_done = on_done
+
+        self.title("Upload Flight")
+        self.geometry("420x260")
+        self.resizable(False, False)
+        self.configure(fg_color=SIDEBAR)
+        self.after(100, self.grab_set)
+
+        self._build()
+        self._upload()
+
+    def _build(self):
+        ctk.CTkLabel(self, text="Uploading Flight",
+                     font=("Georgia", 16, "bold"), text_color=WHITE).pack(pady=(24, 4))
+        ctk.CTkLabel(self, text=os.path.basename(self.filepath),
+                     font=("Consolas", 10), text_color=MUTED).pack()
+
+        self.progress = ctk.CTkProgressBar(self, fg_color=CARD,
+                                            progress_color=ACCENT, height=6,
+                                            corner_radius=3)
+        self.progress.set(0)
+        self.progress.pack(fill="x", padx=32, pady=(20, 8))
+        self.progress.start()
+
+        self.status_lbl = ctk.CTkLabel(self, text="Connecting…",
+                                        font=("Consolas", 11), text_color=MUTED)
+        self.status_lbl.pack()
+
+        self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.btn_frame.pack(pady=(20, 0))
+
+    def _upload(self):
+        def worker():
+            try:
+                with open(self.filepath, "rb") as f:
+                    files = {"flight_file": (os.path.basename(self.filepath), f, "application/gzip")}
+                    data = {}
+                    if self.reg:     data["aircraft_registration"] = self.reg
+                    if self.ac_type: data["aircraft_type"] = self.ac_type
+                    r = requests.post(
+                        f"{self.api_base}/flights", files=files, data=data,
+                        headers={"Authorization": f"Bearer {self.token}",
+                                 "Accept": "application/json"},
+                        timeout=30,
+                    )
+                if r.status_code == 201:
+                    self.after(0, self._success)
+                else:
+                    self.after(0, self._fail, f"HTTP {r.status_code}")
+            except Exception as e:
+                self.after(0, self._fail, str(e))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _success(self):
+        self.progress.stop()
+        self.progress.set(1)
+        self.status_lbl.configure(text="✔ Upload successful!", text_color=GREEN)
+
+        AccentButton(self.btn_frame, text="Delete local file",
+                     command=self._delete_and_close).pack(side="left", padx=6)
+        GhostButton(self.btn_frame, text="Keep file",
+                    command=self._keep_and_close).pack(side="left", padx=6)
+
+    def _keep_and_close(self):
+        self.destroy()
+        if self.on_done:
+            self.on_done()
+
+    def _fail(self, reason):
+        self.progress.stop()
+        self.status_lbl.configure(text=f"✖ Upload failed: {reason}", text_color=RED)
+        GhostButton(self.btn_frame, text="Close", command=self.destroy).pack()
+
+    def _delete_and_close(self):
+        try:
+            os.remove(self.filepath)
+        except Exception:
+            pass
+        self.destroy()
+        if self.on_done:
+            self.on_done()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  APP ROOT
+# ═════════════════════════════════════════════════════════════════════════════
+
+class App(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("CSABOLANTA Flight Tracker")
+        self.geometry("1100x720")
+        self.minsize(900, 620)
+        self.configure(fg_color=BG)
+
+        self._token = None
+        self._api_base = None
+        self._user_name = None
+        self._current_screen = None
+
+        self._show_login()
+
+    def _clear(self):
+        if self._current_screen:
+            self._current_screen.destroy()
+
+    def _show_login(self):
+        self._clear()
+        screen = LoginScreen(self, self._on_auth)
+        screen.pack(fill="both", expand=True)
+        self._current_screen = screen
+
+    def _on_auth(self, token, user_name, api_base):
+        self._token = token
+        self._api_base = api_base
+        self._user_name = user_name
+        self._show_setup()
+
+    def _show_setup(self):
+        self._clear()
+        screen = SetupScreen(self, self._user_name, self._on_start)
+        screen.pack(fill="both", expand=True)
+        self._current_screen = screen
+
+    def _on_start(self, cfg):
+        self._clear()
+        screen = TrackingScreen(self, cfg, self._token, self._api_base, self._user_name)
+        screen.pack(fill="both", expand=True)
+        self._current_screen = screen
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  ENTRY
+# ═════════════════════════════════════════════════════════════════════════════
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
