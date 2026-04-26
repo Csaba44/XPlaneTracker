@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 import sys
 
+
 try:
     from pypresence import Presence as DiscordPresence
     _PYPRESENCE_AVAILABLE = True
@@ -78,9 +79,55 @@ RED         = "#f87171"
 GREEN       = "#4ade80"
 YELLOW      = "#fbbf24"
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
+_airports_cache: list | None = None
 
+def get_nearest_airport_icao(lat: float, lon: float, max_dist_km: float = 10.0) -> str:
+    import math
+    global _airports_cache
+    try:
+        if _airports_cache is None:
+            r = requests.get(
+                "https://davidmegginson.github.io/ourairports-data/airports.csv",
+                timeout=10,
+            )
+            if r.status_code != 200:
+                return "N/A"
+            _airports_cache = []
+            for line in r.text.splitlines()[1:]:
+                parts = line.split(",")
+                if len(parts) < 6:
+                    continue
+                try:
+                    icao = parts[1].strip('"')
+                    a_type = parts[2].strip('"')
+                    a_lat = float(parts[4].strip('"'))
+                    a_lon = float(parts[5].strip('"'))
+                except (ValueError, IndexError):
+                    continue
+                if a_type not in ("large_airport", "medium_airport", "small_airport"):
+                    continue
+                if icao and len(icao) >= 3:
+                    _airports_cache.append((icao, a_lat, a_lon))
+
+        best_icao, best_dist_km = "N/A", float("inf")
+        R = 6371.0
+        for icao, a_lat, a_lon in _airports_cache:
+            dlat = math.radians(a_lat - lat)
+            dlon = math.radians(a_lon - lon)
+            a = math.sin(dlat/2)**2 + math.cos(math.radians(lat)) * math.cos(math.radians(a_lat)) * math.sin(dlon/2)**2
+            dist_km = 2 * R * math.asin(math.sqrt(a))
+            if dist_km < best_dist_km:
+                best_dist_km, best_icao = dist_km, icao
+
+        if best_dist_km > max_dist_km:
+            logging.warning(f"Nearest airport {best_icao} is {best_dist_km:.1f}km away, exceeds {max_dist_km}km limit")
+            return "N/A"
+
+        return best_icao
+    except Exception as e:
+        logging.warning(f"Airport lookup failed: {e}")
+        return "N/A"
+    
 # ── Providers (lazy import so missing deps don't crash GUI startup) ────────────
 def load_provider(sim_choice, host):
     if sim_choice == "X-Plane":
@@ -815,20 +862,22 @@ class TrackingScreen(ctk.CTkFrame):
         if not webhook_url:
             return
         meta = self.flight_path_data.get("metadata", {})
+        last = self.flight_path_data["landings"][-1] if self.flight_path_data["landings"] else {}
+        arr_icao = get_nearest_airport_icao(last.get("lat", 0), last.get("lon", 0)) if last else "N/A"
         with self.buffer_lock:
-            lines = [f"**{l['fpm']:.0f} fpm** | **{l['g']:.2f} g**"
-                     for l in self.landing_buffer]
+            lines = [f"**{l['fpm']:.0f} fpm** | **{l['g']:.2f} g**" for l in self.landing_buffer]
             payload = {
                 "embeds": [{
                     "title": f"{self.user_name} muro phral megérkezett, shavale!",
                     "description": "\n".join(lines),
                     "color": 0x38bdf8,
                     "fields": [
-                        {"name": "Callsign",     "value": meta.get("callsign", "N/A"),              "inline": True},
-                        {"name": "Flight No",    "value": meta.get("flight_number", "N/A"),         "inline": True},
+                        {"name": "Callsign",     "value": meta.get("callsign", "N/A"),               "inline": True},
+                        {"name": "Flight No",    "value": meta.get("flight_number", "N/A"),          "inline": True},
                         {"name": "Registration", "value": meta.get("aircraft_registration") or "N/A","inline": True},
-                        {"name": "Aircraft",     "value": meta.get("aircraft_type", "N/A"),         "inline": True},
-                        {"name": "Simulator",    "value": meta.get("simulator", "N/A"),             "inline": True},
+                        {"name": "Aircraft",     "value": meta.get("aircraft_type", "N/A"),          "inline": True},
+                        {"name": "Simulator",    "value": meta.get("simulator", "N/A"),              "inline": True},
+                        {"name": "Arrival ICAO", "value": arr_icao,                                  "inline": True},
                     ],
                     "footer": {"text": "csabolanta.hu"},
                     "timestamp": datetime.now(timezone.utc).isoformat(),
