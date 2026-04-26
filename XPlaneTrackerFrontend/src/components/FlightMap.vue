@@ -66,7 +66,7 @@ const chartData = computed(() => {
 });
 
 const handleAxisPointer = (params) => {
-  if (!params.axesInfo || !map) return;
+  if (!params.axesInfo?.[0] || !map) return;
   const dataIndex = params.axesInfo[0].value;
   const point = chartData.value[dataIndex];
   if (!point) return;

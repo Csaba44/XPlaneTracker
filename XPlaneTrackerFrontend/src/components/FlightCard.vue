@@ -62,7 +62,7 @@ const emit = defineEmits(["click", "delete", "edit", "share"]);
           <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors ml-1"></i>
         </div>
       </div>
-      <div v-if="!flight.photo.error" class="flex items-center justify-between mt-3 pt-3 border-t border-white/7">
+      <div v-if="flight?.photo && !flight.photo.error" class="flex items-center justify-between mt-3 pt-3 border-t border-white/7">
         <div class="flex items-center gap-2">
           <img :src="flight.photo.thumbnailUrl" class="w-7 h-7 rounded object-cover border border-white/10" />
           <div>
