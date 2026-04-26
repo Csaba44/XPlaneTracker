@@ -30,6 +30,7 @@ const isChartVisible = ref(false);
 const showConnections = ref(false);
 const chartRef = ref(null);
 const mapLayer = ref("dark"); // 'dark' | 'satellite'
+const showRunways = ref(true);
 let map = null;
 let pathLayers = [];
 let connectionLayers = [];
@@ -322,43 +323,56 @@ const drawRunway = (el) => {
   const leDisplaced = el.tags?.["displaced_threshold:le"] ? parseFloat(el.tags["displaced_threshold:le"]) : 0;
   const heDisplaced = el.tags?.["displaced_threshold:he"] ? parseFloat(el.tags["displaced_threshold:he"]) : 0;
 
+  // Draws the displaced threshold zone:
+  // - Transverse bar at the pavement end
+  // - Solid filled arrow polygons pointing INWARD (toward landing threshold), spaced through the zone
+  // - Solid transverse bar at the actual (displaced) threshold line
   const drawDisplacedZone = (pavementEnd, inwardBrg, displaceM, landingThreshold) => {
     if (displaceM <= 0) return;
     const perpBrg = (inwardBrg + 90) % 360;
     const oppBrg = (inwardBrg + 180) % 360;
 
+    // 1. Transverse bar at pavement end
     const barL = destination(pavementEnd[0], pavementEnd[1], (perpBrg + 180) % 360, half * 0.85);
     const barR = destination(pavementEnd[0], pavementEnd[1], perpBrg, half * 0.85);
     pathLayers.push(L.polyline([barL, barR], { color: "#ffffff", weight: 2.5, opacity: 0.85, interactive: false, pane: "runwaysPane" }).addTo(map));
 
+    // 2. Solid filled arrow polygons pointing inward (toward landing threshold)
+    //    Real markings: typically 3 arrows evenly spaced laterally, repeated every ~50 m along zone
     const arrowSpacingM = Math.min(50, displaceM / 1.5);
     const arrowCount = Math.max(1, Math.round(displaceM / arrowSpacingM));
-    const arrowW = half * 0.28;
-    const arrowBodyLen = 20;
-    const arrowHeadLen = 14;
-    const lateralSlots = [-half * 0.45, 0, half * 0.45];
+    const arrowW = half * 0.28; // half-width of arrow base
+    const arrowBodyLen = 20; // shaft length
+    const arrowHeadLen = 14; // head length
+    const lateralSlots = [-half * 0.45, 0, half * 0.45]; // 3 columns
 
     for (let i = 0; i < arrowCount; i++) {
+      // Place arrows so they don't crowd the pavement-end bar or the threshold bar
       const alongDist = (i + 0.5) * (displaceM / arrowCount);
       const rowCenter = destination(pavementEnd[0], pavementEnd[1], inwardBrg, alongDist);
 
       for (const latOff of lateralSlots) {
         const base = destination(rowCenter[0], rowCenter[1], perpBrg, latOff);
 
+        // Tail (wide base) — at the outboard / pavement-end side of the arrow
         const tailCenter = destination(base[0], base[1], oppBrg, arrowBodyLen / 2);
         const tL = destination(tailCenter[0], tailCenter[1], (perpBrg + 180) % 360, arrowW * 0.55);
         const tR = destination(tailCenter[0], tailCenter[1], perpBrg, arrowW * 0.55);
 
+        // Mid point (narrowing toward head)
         const midCenter = destination(base[0], base[1], inwardBrg, arrowBodyLen / 2);
         const mL = destination(midCenter[0], midCenter[1], (perpBrg + 180) % 360, arrowW * 0.55);
         const mR = destination(midCenter[0], midCenter[1], perpBrg, arrowW * 0.55);
 
+        // Arrowhead base (wider)
         const hBase = destination(base[0], base[1], inwardBrg, arrowBodyLen);
         const hL = destination(hBase[0], hBase[1], (perpBrg + 180) % 360, arrowW);
         const hR = destination(hBase[0], hBase[1], perpBrg, arrowW);
 
+        // Arrowhead tip (apex pointing inward)
         const tip = destination(hBase[0], hBase[1], inwardBrg, arrowHeadLen);
 
+        // Draw as filled polygon: tail-left → mid-left → head-left → tip → head-right → mid-right → tail-right
         pathLayers.push(
           L.polygon([tL, mL, hL, tip, hR, mR, tR], {
             color: "transparent",
@@ -371,11 +385,13 @@ const drawRunway = (el) => {
       }
     }
 
+    // 3. Solid transverse bar at the actual (displaced) landing threshold
     const thrL = destination(landingThreshold[0], landingThreshold[1], (perpBrg + 180) % 360, half * 0.85);
     const thrR = destination(landingThreshold[0], landingThreshold[1], perpBrg, half * 0.85);
     pathLayers.push(L.polyline([thrL, thrR], { color: "#ffffff", weight: 3, opacity: 1, interactive: false, pane: "runwaysPane" }).addTo(map));
   };
 
+  // Actual landing thresholds (shifted inward by displaced amount)
   const leThreshold = leDisplaced > 0 ? destination(cl[0][0], cl[0][1], leInward, leDisplaced) : cl[0];
   const heThreshold = heDisplaced > 0 ? destination(cl[cl.length - 1][0], cl[cl.length - 1][1], heInward, heDisplaced) : cl[cl.length - 1];
 
@@ -513,10 +529,24 @@ const drawFlight = (data) => {
   const pointMap = new Map(rawPath.map((p) => [coordKey(p[1], p[2]), p]));
   const reducedPath = simplifiedCoords.map((coord) => pointMap.get(coordKey(coord[0], coord[1])) || [null, coord[0], coord[1], 0, 0]);
 
+  // Flat arrays over the RDP-reduced path — altitude/speed are carried through
+  // from the original data via the pointMap lookup, so all fidelity is preserved.
   const allPoints = reducedPath.map((p) => [p[1], p[2]]);
   const allAltitudes = reducedPath.map((p) => p[3] || 0);
   const allSpeeds = reducedPath.map((p) => p[4] || 0);
 
+  // --- OPTIMIZATION: tolerance-based colour-run merging ---
+  // With a continuous gradient, exact colour equality never occurs, so instead of
+  // one polyline per segment (O(N) layers) we merge consecutive segments whose
+  // representative colour is within RGB_MERGE_DELTA of each other into a single
+  // multi-point polyline.  On a typical cruise segment where altitude is nearly
+  // constant this collapses hundreds of segments into one layer, matching the
+  // performance of the original same-colour grouping while still producing a
+  // smooth gradient on climbs/descents.
+  //
+  // RGB_MERGE_DELTA = 6 (out of 255) is visually imperceptible but tight enough
+  // that an ascent from 0 → 42 600 ft produces ~200 distinct polylines rather
+  // than ~1000 (for a well-simplified path), keeping the DOM lean.
   const RGB_MERGE_DELTA = 6;
 
   const parseRgb = (rgbStr) => {
@@ -526,6 +556,10 @@ const drawFlight = (data) => {
 
   const rgbClose = (a, b) => Math.abs(a.r - b.r) <= RGB_MERGE_DELTA && Math.abs(a.g - b.g) <= RGB_MERGE_DELTA && Math.abs(a.b - b.b) <= RGB_MERGE_DELTA;
 
+  // Build merged colour-run groups.
+  // Each group: { color, rgb, points[], altitudes[], speeds[] }
+  // Points include the shared boundary point so adjacent groups overlap by one
+  // vertex — this is the same technique the original code used.
   const colorGroups = [];
   let curGroup = null;
 
@@ -535,6 +569,8 @@ const drawFlight = (data) => {
     const rgb = parseRgb(color);
 
     if (!curGroup || !rgbClose(curGroup.rgb, rgb)) {
+      // Start a new group; if there was a previous one, give it the shared boundary
+      // point so there is no gap between polylines.
       if (curGroup) {
         curGroup.points.push(allPoints[i]);
         curGroup.altitudes.push(allAltitudes[i]);
@@ -543,6 +579,7 @@ const drawFlight = (data) => {
       curGroup = { color, rgb, points: [allPoints[i]], altitudes: [allAltitudes[i]], speeds: [allSpeeds[i]] };
       colorGroups.push(curGroup);
     }
+    // Always append the end-point of this segment to the current group.
     curGroup.points.push(allPoints[i + 1]);
     curGroup.altitudes.push(allAltitudes[i + 1]);
     curGroup.speeds.push(allSpeeds[i + 1]);
@@ -613,6 +650,7 @@ const drawFlight = (data) => {
 const loadAirportsJson = async () => {
   if (airportsJsonData) return airportsJsonData;
   try {
+    // Try the backend airports.json first (same source as backend uses)
     const response = await fetch("https://raw.githubusercontent.com/mwgg/Airports/master/airports.json");
     airportsJsonData = await response.json();
     return airportsJsonData;
@@ -638,6 +676,7 @@ const getAirportCoords = async (icao) => {
   return null;
 };
 
+// Compute unique connection pairs from flights (sorted so LHBP-LGZA and LGZA-LHBP are same pair)
 const computeConnections = (flightList) => {
   const pairMap = new Map();
 
@@ -645,8 +684,10 @@ const computeConnections = (flightList) => {
     const dep = flight.dep_icao;
     const arr = flight.arr_icao;
 
+    // Skip incomplete flights (either end is null/empty)
     if (!dep || !arr || dep === "NULL" || arr === "NULL") continue;
 
+    // Normalize: sort alphabetically to group both directions
     const key = [dep.toUpperCase(), arr.toUpperCase()].sort().join("_");
     const depUpper = dep.toUpperCase();
     const arrUpper = arr.toUpperCase();
@@ -673,7 +714,8 @@ const drawConnections = async () => {
 
   const connections = computeConnections(props.flights);
 
-  const airportDots = new Map();
+  // Collect unique airports to draw dots (deduplicated)
+  const airportDots = new Map(); // icao -> coords
 
   for (const conn of connections) {
     const coords1 = await getAirportCoords(conn.icao1);
@@ -686,6 +728,7 @@ const drawConnections = async () => {
 
     const label = `${conn.icao1} – ${conn.icao2} (${conn.count} járat)`;
 
+    // Visible dashed line (thin, styled)
     const visLine = L.polyline([coords1, coords2], {
       color: "#94a3b8",
       weight: 2,
@@ -695,6 +738,7 @@ const drawConnections = async () => {
       pane: "connectionsPane",
     });
 
+    // Wide invisible hit target on top for easy mouse interaction
     const hitLine = L.polyline([coords1, coords2], {
       color: "#000",
       weight: 18,
@@ -718,6 +762,7 @@ const drawConnections = async () => {
 
     hitLine.on("click", (e) => {
       L.DomEvent.stop(e);
+      // Remove focus outline immediately after click
       const el = hitLine.getElement?.();
       if (el) el.blur();
       const dep = conn.icao1.toLowerCase();
@@ -731,7 +776,9 @@ const drawConnections = async () => {
     connectionLayers.push(visLine, hitLine);
   }
 
+  // Draw airport dots for every unique airport in the connections
   for (const [icao, coords] of airportDots) {
+    // Outer glow ring
     const ring = L.circleMarker(coords, {
       radius: 6,
       color: "#94a3b8",
@@ -743,6 +790,7 @@ const drawConnections = async () => {
       pane: "connectionsPane",
     });
 
+    // Inner filled dot
     const dot = L.circleMarker(coords, {
       radius: 3,
       color: "transparent",
@@ -793,6 +841,11 @@ watch(mapLayer, (val) => {
   }
 });
 
+watch(showRunways, (val) => {
+  if (!map) return;
+  map.getPane("runwaysPane").style.display = val ? "" : "none";
+});
+
 onMounted(() => {
   initMap();
   if (props.flightData) drawFlight(props.flightData);
@@ -810,6 +863,7 @@ onMounted(() => {
           <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Rétegek</span>
         </div>
         <div class="flex flex-col p-1 gap-0.5">
+          <!-- Base map options -->
           <button @click="mapLayer = 'dark'" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', mapLayer === 'dark' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-moon w-3.5 text-center"></i>
             <span>Sötét</span>
@@ -819,6 +873,16 @@ onMounted(() => {
             <i class="fa-solid fa-satellite w-3.5 text-center"></i>
             <span>Műhold</span>
             <span v-if="mapLayer === 'satellite'" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          </button>
+
+          <!-- Divider -->
+          <div class="my-0.5 border-t border-slate-700/60"></div>
+
+          <!-- Overlay toggles -->
+          <button @click="showRunways = !showRunways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showRunways ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-plane-departure w-3.5 text-center"></i>
+            <span>Futópályák</span>
+            <span v-if="showRunways" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
         </div>
       </div>
