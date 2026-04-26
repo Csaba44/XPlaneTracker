@@ -975,7 +975,7 @@ class UploadDialog(ctk.CTkToplevel):
 
 # Replace with your own Discord application client ID from
 # https://discord.com/developers/applications
-DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "1498061987870015779")
+DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 
 class RichPresenceManager:
     """Runs pypresence synchronously in its own thread with its own event loop.
