@@ -14,6 +14,7 @@ import { altToColor } from "../composables/useAltColor";
 import { distanceM, toleranceForGS, rdpAdaptive, nearestPointOnPolyline } from "../composables/useGeo";
 import { getAirportCoords } from "../composables/useAirports";
 import { fetchAndDrawRunways, pendingRequests } from "../composables/useRunways";
+import { fetchAndDrawAirportFeatures } from "../composables/useAirportFeatures";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, TitleComponent]);
 
@@ -36,12 +37,19 @@ const showConnections = ref(false);
 const chartRef = ref(null);
 const mapLayer = ref("dark");
 const showRunways = ref(true);
+const showTaxiways = ref(true);
+const showStands = ref(false);
+const showGates = ref(false);
 let map = null;
 let pathLayers = [];
 let connectionLayers = [];
+let featureLayers = [];
 let hoverMarker = null;
 let tileLayerDark = null;
 let tileLayerSatellite = null;
+
+// Tracks which airport coords have had features drawn so we can redraw on toggle
+const drawnFeatureCoords = [];
 
 const chartData = computed(() => {
   if (!props.flightData?.path) return [];
@@ -131,6 +139,9 @@ const initMap = () => {
   map.createPane("runwaysPane").style.zIndex = 390;
   map.createPane("flightPathPane").style.zIndex = 410;
   map.createPane("connectionsPane").style.zIndex = 380;
+  map.createPane("taxiwaysPane").style.zIndex = 385;
+  map.createPane("standsPane").style.zIndex = 395;
+  map.createPane("gatesPane").style.zIndex = 396;
 
   tileLayerDark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 });
   tileLayerSatellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 20, attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community" });
@@ -155,8 +166,49 @@ const clearConnections = () => {
   });
 };
 
+const clearFeatures = () => {
+  if (!map) return;
+  const layers = featureLayers.splice(0);
+  requestAnimationFrame(() => {
+    layers.forEach((l) => map.removeLayer(l));
+  });
+};
+
+const redrawFeatures = () => {
+  clearFeatures();
+  if (!map) return;
+  const options = {
+    taxiways: showTaxiways.value,
+    stands: showStands.value,
+    gates: showGates.value,
+  };
+  const anyOn = options.taxiways || options.stands || options.gates;
+  if (!anyOn) return;
+  drawnFeatureCoords.forEach(({ lat, lon }) => {
+    fetchAndDrawAirportFeatures(lat, lon, map, featureLayers, options);
+  });
+};
+
+const fetchFeaturesForLocation = (lat, lon) => {
+  const options = {
+    taxiways: showTaxiways.value,
+    stands: showStands.value,
+    gates: showGates.value,
+  };
+  const anyOn = options.taxiways || options.stands || options.gates;
+  if (!anyOn) return;
+
+  const alreadyTracked = drawnFeatureCoords.some((c) => c.lat === lat && c.lon === lon);
+  if (!alreadyTracked) {
+    drawnFeatureCoords.push({ lat, lon });
+  }
+  fetchAndDrawAirportFeatures(lat, lon, map, featureLayers, options);
+};
+
 const drawFlight = (data) => {
   clearMap();
+  drawnFeatureCoords.splice(0);
+  clearFeatures();
   if (!map || !data?.path) return;
 
   const rawPath = data.path;
@@ -232,6 +284,7 @@ const drawFlight = (data) => {
   if (data.path && data.path.length > 0) {
     const departurePoint = data.path[0];
     fetchAndDrawRunways(departurePoint[1], departurePoint[2], map, pathLayers);
+    fetchFeaturesForLocation(departurePoint[1], departurePoint[2]);
   }
 
   if (data.landings?.length) {
@@ -255,6 +308,7 @@ const drawFlight = (data) => {
       );
       pathLayers.push(marker);
       fetchAndDrawRunways(landing.lat, landing.lon, map, pathLayers);
+      fetchFeaturesForLocation(landing.lat, landing.lon);
     });
   }
 
@@ -423,6 +477,10 @@ watch(showRunways, (val) => {
   map.getPane("runwaysPane").style.display = val ? "" : "none";
 });
 
+watch(showTaxiways, () => redrawFeatures());
+watch(showStands, () => redrawFeatures());
+watch(showGates, () => redrawFeatures());
+
 onMounted(() => {
   initMap();
   if (props.flightData) drawFlight(props.flightData);
@@ -433,12 +491,14 @@ onMounted(() => {
   <main class="flex-grow relative">
     <div ref="mapContainer" class="absolute inset-0 w-full h-full z-0"></div>
 
+    <!-- Top right layer menu -->
     <div class="absolute top-4 right-4 z-[1000]">
       <div class="bg-slate-900/90 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden">
         <div class="px-3 py-1.5 border-b border-slate-700/60">
           <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Rétegek</span>
         </div>
         <div class="flex flex-col p-1 gap-0.5">
+          <!-- Base map options -->
           <button @click="mapLayer = 'dark'" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', mapLayer === 'dark' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-moon w-3.5 text-center"></i>
             <span>Sötét</span>
@@ -450,17 +510,38 @@ onMounted(() => {
             <span v-if="mapLayer === 'satellite'" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
 
+          <!-- Divider -->
           <div class="my-0.5 border-t border-slate-700/60"></div>
 
+          <!-- Overlay toggles -->
           <button @click="showRunways = !showRunways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showRunways ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-plane-departure w-3.5 text-center"></i>
-            <span>Futópályák</span>
+            <span>Pályák</span>
             <span v-if="showRunways" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
+
+          <button @click="showTaxiways = !showTaxiways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showTaxiways ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-road w-3.5 text-center"></i>
+            <span>Gurulóutak</span>
+            <span v-if="showTaxiways" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </button>
+
+          <button @click="showStands = !showStands" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showStands ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-parking w-3.5 text-center"></i>
+            <span>Állóhelyek</span>
+            <span v-if="showStands" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </button>
+
+          <!-- <button @click="showGates = !showGates" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showGates ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-door-open w-3.5 text-center"></i>
+            <span>Kapuk</span>
+            <span v-if="showGates" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </button>-->
         </div>
       </div>
     </div>
 
+    <!-- Bottom left controls -->
     <div class="absolute bottom-6 left-6 z-[1000] flex flex-col gap-2">
       <button @click="isChartVisible = !isChartVisible" class="bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group">
         <i class="fa-solid fa-chart-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
@@ -474,6 +555,7 @@ onMounted(() => {
       </button>
     </div>
 
+    <!-- Chart panel -->
     <div v-if="isChartVisible" class="absolute bottom-30 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
       <div class="flex justify-between items-center mb-2 px-2">
         <h4 class="text-white text-[10px] font-black uppercase tracking-tighter opacity-50">Flight Profile</h4>
@@ -539,6 +621,81 @@ onMounted(() => {
   letter-spacing: 0.04em;
   padding: 4px 10px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+.taxiway-tooltip {
+  background: #1c1400;
+  color: #fcd34d;
+  border: 1px solid #92400e;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+.taxiway-label-marker {
+  color: #fbbf24;
+  font-family: "Arial Narrow", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  text-shadow:
+    0 0 3px #000,
+    0 0 6px #000;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.stand-marker {
+  color: #fdba74;
+  font-family: "Arial Narrow", Arial, sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  text-shadow:
+    0 0 3px #000,
+    0 0 5px #000;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.stand-tooltip {
+  background: #1c0a00;
+  color: #fed7aa;
+  border: 1px solid #9a3412;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  padding: 3px 8px;
+}
+.gate-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.gate-marker i {
+  color: #86efac;
+  font-size: 10px;
+  text-shadow: 0 0 4px #000;
+}
+.gate-marker span {
+  color: #86efac;
+  font-family: "Arial Narrow", Arial, sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  text-shadow:
+    0 0 3px #000,
+    0 0 5px #000;
+  white-space: nowrap;
+}
+.gate-tooltip {
+  background: #001a08;
+  color: #bbf7d0;
+  border: 1px solid #166534;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  padding: 3px 8px;
 }
 .chart {
   height: 100%;

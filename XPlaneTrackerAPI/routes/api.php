@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\AirportFeaturesController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\FlightController;
@@ -42,6 +43,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Add this to your API routes
     Route::get('/leaderboard', [LeaderboardController::class, 'index']);
+
+    Route::get('/airport-features', [AirportFeaturesController::class, 'getFeatures']);
 });
 
 Route::get('/flights/{flight}', [FlightController::class, 'show']);
