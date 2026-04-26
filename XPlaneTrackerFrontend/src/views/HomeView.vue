@@ -14,30 +14,23 @@
         <router-link to="/login" class="bg-flight-accent hover:bg-sky-400 text-flight-bg font-black px-10 py-4 rounded-full transition-all transform hover:scale-105 shadow-[0_0_25px_rgba(56,189,248,0.3)] uppercase tracking-widest text-sm"> Zha tar aba ando Pilótafülke muro phral </router-link>
       </div>
 
-      <div class="mt-16 bg-flight-sidebar border border-flight-border p-8 rounded-2xl shadow-2xl text-left max-w-xl mx-auto">
-        <div class="flex items-center space-x-3 mb-6">
-          <i class="fa-solid fa-hand-holding-heart text-flight-accent text-xl"></i>
-          <h2 class="text-white font-bold uppercase tracking-wider">Ha tiszteled, itt tudsz pénzt küldeni (szeretem a pénzt)</h2>
+      <div class="mt-16 relative bg-flight-sidebar border border-flight-border p-8 rounded-2xl shadow-2xl max-w-xl mx-auto flex flex-col items-center overflow-hidden group">
+        <div class="absolute top-0 left-1/2 -translate-x-1/2 w-full h-32 bg-[#FF5E5B] blur-[100px] opacity-10 group-hover:opacity-20 transition-opacity duration-700 pointer-events-none"></div>
+
+        <div class="flex flex-col items-center mb-6 z-10 text-center">
+          <div class="bg-[#FF5E5B]/10 p-4 rounded-full mb-4 border border-[#FF5E5B]/20 shadow-[0_0_15px_rgba(255,94,91,0.1)]">
+            <i class="fa-solid fa-hand-holding-dollar text-[#FF5E5B] text-3xl"></i>
+          </div>
+          <h2 class="text-white font-black uppercase tracking-widest text-lg md:text-xl">Ha tiszteled, adj egy kis penzt teso!</h2>
+          <p class="text-slate-400 font-medium text-sm mt-2 italic">(Szeretem a pénzt)</p>
         </div>
 
-        <div class="space-y-4 font-mono text-xs md:text-sm">
-          <div class="flex flex-col md:flex-row md:justify-between border-b border-flight-border/50 pb-2">
-            <span class="text-slate-500 uppercase">Számlaszám:</span>
-            <span class="text-white font-bold">10918001-00000134-79770006 (UniCredit)</span>
-          </div>
-          <div class="flex flex-col md:flex-row md:justify-between border-b border-flight-border/50 pb-2">
-            <span class="text-slate-500 uppercase">IBAN:</span>
-            <span class="text-white font-bold">HU21 10918001 00000134 79770006</span>
-          </div>
-          <div class="flex flex-col md:flex-row md:justify-between border-b border-flight-border/50 pb-2">
-            <span class="text-slate-500 uppercase">BIC (SWIFT):</span>
-            <span class="text-white font-bold">BACXHUHB</span>
-          </div>
-          <div class="pt-2">
-            <p class="text-[10px] text-slate-500 uppercase mb-1">Számlatulajdonos</p>
-            <p class="text-flight-accent font-black text-base uppercase">Tisztesség a bűn helyett alapítvány</p>
-          </div>
-        </div>
+        <p class="text-slate-500 text-sm mb-8 z-10 max-w-sm">Báttya, 8 eurot fizetek havonta a szerverért! Támogasd a projektet, hogy továbbra is zoral maradjon a rendszer és talán még barakkára is lesz pénzem.</p>
+
+        <a href="https://ko-fi.com/csaba44" target="_blank" rel="noopener noreferrer" class="z-10 w-full sm:w-auto bg-[#FF5E5B] hover:bg-[#ff4744] border border-[#ff8381] text-white font-black px-10 py-4 rounded-xl transition-all transform hover:-translate-y-1 hover:shadow-[0_10px_25px_rgba(255,94,91,0.3)] flex items-center justify-center gap-3">
+          <i class="fa-solid fa-mug-hot text-xl group-hover:animate-bounce"></i>
+          <span class="uppercase tracking-widest text-sm">Támogatás</span>
+        </a>
       </div>
     </div>
   </div>
