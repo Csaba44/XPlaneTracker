@@ -24,8 +24,8 @@ class AirportFeaturesController extends Controller
             return response()->json(Cache::get($cacheKey));
         }
 
-        $offsetLat = 0.025;
-        $offsetLon = 0.035;
+        $offsetLat = 0.08;
+        $offsetLon = 0.1;
         $s = $lat - $offsetLat;
         $n = $lat + $offsetLat;
         $w = $lon - $offsetLon;

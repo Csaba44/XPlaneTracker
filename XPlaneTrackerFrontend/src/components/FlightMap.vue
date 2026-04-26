@@ -633,7 +633,7 @@ onMounted(() => {
   padding: 2px 8px;
 }
 .taxiway-label-marker {
-  color: #fbbf24;
+  color: #c58d00;
   font-family: "Arial Narrow", Arial, sans-serif;
   font-size: 11px;
   font-weight: 900;
