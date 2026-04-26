@@ -5,6 +5,76 @@ import { bearing, destination, distanceM, offsetPolyline, designatorToHeading, a
 const runwayCache = new Map();
 const pendingRequests = new Set();
 
+export const drawDisplacedThreshold = (el, map, pathLayers) => {
+  if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
+  const cl = el.geometry.map((g) => [g.lat, g.lon]);
+  const widthM = el.tags?.width ? parseFloat(el.tags.width) : 45;
+  const half = widthM / 2;
+
+  const inwardBrg = bearing(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
+  const perpBrg = (inwardBrg + 90) % 360;
+  const oppBrg = (inwardBrg + 180) % 360;
+  const pavementEnd = cl[0];
+  const landingThreshold = cl[cl.length - 1];
+  const displaceM = distanceM(pavementEnd[0], pavementEnd[1], landingThreshold[0], landingThreshold[1]);
+
+  // Fill background black
+  const right = offsetPolyline(cl, half);
+  const left = offsetPolyline(cl, -half);
+  pathLayers.push(L.polygon([...right, ...[...left].reverse()], {
+    color: "transparent", fillColor: "#111111", fillOpacity: 1,
+    interactive: false, pane: "runwaysPane"
+  }).addTo(map));
+
+  // Edge lines
+  [right, left].forEach((edge) => {
+    pathLayers.push(L.polyline(edge, { color: "#ffffff", weight: 2, opacity: 0.9, interactive: false, pane: "runwaysPane" }).addTo(map));
+  });
+
+  // Solid bar at pavement end
+  const barL = destination(pavementEnd[0], pavementEnd[1], (perpBrg + 180) % 360, half * 0.85);
+  const barR = destination(pavementEnd[0], pavementEnd[1], perpBrg, half * 0.85);
+  pathLayers.push(L.polyline([barL, barR], {
+    color: "#ffffff", weight: 3, opacity: 1, interactive: false, pane: "runwaysPane"
+  }).addTo(map));
+
+  // Arrows pointing inward
+  const arrowCount = Math.max(1, Math.floor(displaceM / 60));
+  const arrowHalfW = half * 0.03;      // was 0.18 — much slimmer
+  const arrowBodyLen = 24;              // was 18 — taller
+  const arrowHeadLen = 10;             // was 12
+  const lateralSlots = [0];            // was [-half * 0.35, half * 0.35] — single centered arrow
+
+  for (let i = 0; i < arrowCount; i++) {
+    const alongDist = (i + 0.5) * (displaceM / arrowCount);
+    const base = destination(pavementEnd[0], pavementEnd[1], inwardBrg, alongDist);
+
+    for (const latOff of lateralSlots) {
+      const center = destination(base[0], base[1], perpBrg, latOff);
+      const tail = destination(center[0], center[1], oppBrg, arrowBodyLen / 2);
+      const head = destination(center[0], center[1], inwardBrg, arrowBodyLen / 2);
+      const tL = destination(tail[0], tail[1], (perpBrg + 180) % 360, arrowHalfW);
+      const tR = destination(tail[0], tail[1], perpBrg, arrowHalfW);
+      const hL = destination(head[0], head[1], (perpBrg + 180) % 360, arrowHalfW);
+      const hR = destination(head[0], head[1], perpBrg, arrowHalfW);
+      const wL = destination(head[0], head[1], (perpBrg + 180) % 360, arrowHalfW * 2.2);
+      const wR = destination(head[0], head[1], perpBrg, arrowHalfW * 2.2);
+      const tip = destination(head[0], head[1], inwardBrg, arrowHeadLen);
+      pathLayers.push(L.polygon([tL, tR, hR, wR, tip, wL, hL], {
+        color: "transparent", fillColor: "#ffffff", fillOpacity: 0.85,
+        interactive: false, pane: "runwaysPane",
+      }).addTo(map));
+    }
+  }
+
+  // Solid bar at landing threshold
+  const thrL = destination(landingThreshold[0], landingThreshold[1], (perpBrg + 180) % 360, half * 0.85);
+  const thrR = destination(landingThreshold[0], landingThreshold[1], perpBrg, half * 0.85);
+  pathLayers.push(L.polyline([thrL, thrR], {
+    color: "#ffffff", weight: 3, opacity: 1, interactive: false, pane: "runwaysPane"
+  }).addTo(map));
+};
+
 export const drawRunway = (el, map, pathLayers) => {
   if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
   let cl = el.geometry.map((g) => [g.lat, g.lon]);
@@ -28,68 +98,8 @@ export const drawRunway = (el, map, pathLayers) => {
   });
   pathLayers.push(L.polyline(cl, { color: "#ffffff", weight: 1.5, opacity: 0.65, dashArray: "20 15", interactive: false, pane: "runwaysPane" }).addTo(map));
 
-  const leDisplaced = el.tags?.["displaced_threshold:le"] ? parseFloat(el.tags["displaced_threshold:le"]) : 0;
-  const heDisplaced = el.tags?.["displaced_threshold:he"] ? parseFloat(el.tags["displaced_threshold:he"]) : 0;
-
-  const drawDisplacedZone = (pavementEnd, inwardBrg, displaceM, landingThreshold) => {
-    if (displaceM <= 0) return;
-    const perpBrg = (inwardBrg + 90) % 360;
-    const oppBrg = (inwardBrg + 180) % 360;
-
-    const barL = destination(pavementEnd[0], pavementEnd[1], (perpBrg + 180) % 360, half * 0.85);
-    const barR = destination(pavementEnd[0], pavementEnd[1], perpBrg, half * 0.85);
-    pathLayers.push(L.polyline([barL, barR], { color: "#ffffff", weight: 2.5, opacity: 0.85, interactive: false, pane: "runwaysPane" }).addTo(map));
-
-    const arrowSpacingM = Math.min(50, displaceM / 1.5);
-    const arrowCount = Math.max(1, Math.round(displaceM / arrowSpacingM));
-    const arrowW = half * 0.28;
-    const arrowBodyLen = 20;
-    const arrowHeadLen = 14;
-    const lateralSlots = [-half * 0.45, 0, half * 0.45];
-
-    for (let i = 0; i < arrowCount; i++) {
-      const alongDist = (i + 0.5) * (displaceM / arrowCount);
-      const rowCenter = destination(pavementEnd[0], pavementEnd[1], inwardBrg, alongDist);
-
-      for (const latOff of lateralSlots) {
-        const base = destination(rowCenter[0], rowCenter[1], perpBrg, latOff);
-
-        const tailCenter = destination(base[0], base[1], oppBrg, arrowBodyLen / 2);
-        const tL = destination(tailCenter[0], tailCenter[1], (perpBrg + 180) % 360, arrowW * 0.55);
-        const tR = destination(tailCenter[0], tailCenter[1], perpBrg, arrowW * 0.55);
-
-        const midCenter = destination(base[0], base[1], inwardBrg, arrowBodyLen / 2);
-        const mL = destination(midCenter[0], midCenter[1], (perpBrg + 180) % 360, arrowW * 0.55);
-        const mR = destination(midCenter[0], midCenter[1], perpBrg, arrowW * 0.55);
-
-        const hBase = destination(base[0], base[1], inwardBrg, arrowBodyLen);
-        const hL = destination(hBase[0], hBase[1], (perpBrg + 180) % 360, arrowW);
-        const hR = destination(hBase[0], hBase[1], perpBrg, arrowW);
-
-        const tip = destination(hBase[0], hBase[1], inwardBrg, arrowHeadLen);
-
-        pathLayers.push(
-          L.polygon([tL, mL, hL, tip, hR, mR, tR], {
-            color: "transparent",
-            fillColor: "#ffffff",
-            fillOpacity: 0.85,
-            interactive: false,
-            pane: "runwaysPane",
-          }).addTo(map),
-        );
-      }
-    }
-
-    const thrL = destination(landingThreshold[0], landingThreshold[1], (perpBrg + 180) % 360, half * 0.85);
-    const thrR = destination(landingThreshold[0], landingThreshold[1], perpBrg, half * 0.85);
-    pathLayers.push(L.polyline([thrL, thrR], { color: "#ffffff", weight: 3, opacity: 1, interactive: false, pane: "runwaysPane" }).addTo(map));
-  };
-
-  const leThreshold = leDisplaced > 0 ? destination(cl[0][0], cl[0][1], leInward, leDisplaced) : cl[0];
-  const heThreshold = heDisplaced > 0 ? destination(cl[cl.length - 1][0], cl[cl.length - 1][1], heInward, heDisplaced) : cl[cl.length - 1];
-
-  drawDisplacedZone(cl[0], leInward, leDisplaced, leThreshold);
-  drawDisplacedZone(cl[cl.length - 1], heInward, heDisplaced, heThreshold);
+  const leThreshold = cl[0];
+  const heThreshold = cl[cl.length - 1];
 
   const drawPianoKeys = (thresholdPt, inwardBrg) => {
     const perpBrg = (inwardBrg + 90) % 360;
@@ -119,8 +129,8 @@ export const drawRunway = (el, map, pathLayers) => {
   const barLenM = 22.5,
     barWidthM = 3,
     barLateralM = widthM * 0.2;
+
   const drawTDZBars = (thresholdPt, inwardBrg) => {
-    console.log("TDZ:", thresholdPt, inwardBrg);
     const perpBrg = (inwardBrg + 90) % 360;
     tzDistances.forEach((dist) => {
       const along = destination(thresholdPt[0], thresholdPt[1], inwardBrg, dist);
@@ -141,6 +151,7 @@ export const drawRunway = (el, map, pathLayers) => {
   const trueHEInward = bearing(heThreshold[0], heThreshold[1], leThreshold[0], leThreshold[1]);
   drawTDZBars(leThreshold, trueLEInward);
   drawTDZBars(heThreshold, trueHEInward);
+
   if (el.tags?.ref) {
     let parts = el.tags.ref.split("/");
     let leRef = parts[0],
@@ -164,7 +175,9 @@ export const fetchAndDrawRunways = async (lat, lon, map, pathLayers) => {
   const localCacheKey = (lat, lon) => `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
   const key = localCacheKey(lat, lon);
   if (runwayCache.has(key)) {
-    runwayCache.get(key).forEach((el) => drawRunway(el, map, pathLayers));
+    const cached = runwayCache.get(key);
+    cached.filter(el => el.tags?.runway !== "displaced_threshold").forEach((el) => drawRunway(el, map, pathLayers));
+    cached.filter(el => el.tags?.runway === "displaced_threshold").forEach((el) => drawDisplacedThreshold(el, map, pathLayers));
     return;
   }
   if (pendingRequests.has(key)) return;
@@ -174,7 +187,8 @@ export const fetchAndDrawRunways = async (lat, lon, map, pathLayers) => {
     const data = response.data;
     if (data.elements) {
       runwayCache.set(key, data.elements);
-      data.elements.forEach((el) => drawRunway(el, map, pathLayers));
+      data.elements.filter(el => el.tags?.runway !== "displaced_threshold").forEach((el) => drawRunway(el, map, pathLayers));
+      data.elements.filter(el => el.tags?.runway === "displaced_threshold").forEach((el) => drawDisplacedThreshold(el, map, pathLayers));
     }
   } catch (err) {
     console.error(err);
