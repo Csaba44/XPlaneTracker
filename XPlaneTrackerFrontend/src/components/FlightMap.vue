@@ -10,6 +10,12 @@ import { LineChart } from "echarts/charts";
 import { GridComponent, TooltipComponent, TitleComponent } from "echarts/components";
 import VChart from "vue-echarts";
 
+import { altToColor } from "../composables/useAltColor";
+import { distanceM, toleranceForGS, rdpAdaptive, nearestPointOnPolyline } from "../composables/useGeo";
+import { getAirportCoords } from "../composables/useAirports";
+import { fetchAndDrawRunways, pendingRequests } from "../composables/useRunways";
+import { fetchAndDrawAirportFeatures } from "../composables/useAirportFeatures";
+
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, TitleComponent]);
 
 const props = defineProps({
@@ -25,190 +31,41 @@ const props = defineProps({
 
 const emit = defineEmits(["setSearchQuery"]);
 
+// Helper for local storage
+const getStorage = (key, defaultVal) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item !== null ? JSON.parse(item) : defaultVal;
+  } catch {
+    return defaultVal;
+  }
+};
+
 const mapContainer = ref(null);
 const isChartVisible = ref(false);
 const showConnections = ref(false);
 const chartRef = ref(null);
+
+// Layers state synced with localStorage
+const mapLayer = ref(getStorage("flightMap_layer", "dark"));
+const showRunways = ref(getStorage("flightMap_showRunways", true));
+const showTaxiways = ref(getStorage("flightMap_showTaxiways", true));
+const showStands = ref(getStorage("flightMap_showStands", false));
+const showGates = ref(getStorage("flightMap_showGates", false));
+
+const isLayersMenuOpen = ref(false);
+
 let map = null;
 let pathLayers = [];
 let connectionLayers = [];
+let featureLayers = [];
 let hoverMarker = null;
+let tileLayerDark = null;
+let tileLayerSatellite = null;
 
-const runwayCache = new Map();
-const pendingRequests = new Set();
+// Tracks which airport coords have had features drawn so we can redraw on toggle
+const drawnFeatureCoords = [];
 
-// Airport coordinate cache
-const airportCoordCache = new Map();
-let airportsJsonData = null;
-
-const localCacheKey = (lat, lon) => `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
-
-// FlightRadar24-matching altitude → colour interpolator (input: feet)
-const FR24_STOPS = [
-  { ft: 0, r: 255, g: 255, b: 255 },
-  { ft: 300, r: 255, g: 224, b: 98 },
-  { ft: 700, r: 255, g: 234, b: 0 },
-  { ft: 1000, r: 240, g: 255, b: 0 },
-  { ft: 1300, r: 204, g: 255, b: 0 },
-  { ft: 2000, r: 66, g: 255, b: 0 },
-  { ft: 2600, r: 30, g: 255, b: 0 },
-  { ft: 3300, r: 0, g: 255, b: 12 },
-  { ft: 3900, r: 0, g: 255, b: 54 },
-  { ft: 4900, r: 0, g: 255, b: 114 },
-  { ft: 6600, r: 0, g: 255, b: 156 },
-  { ft: 8200, r: 0, g: 255, b: 210 },
-  { ft: 9800, r: 0, g: 255, b: 228 },
-  { ft: 11500, r: 0, g: 234, b: 255 },
-  { ft: 13100, r: 0, g: 192, b: 255 },
-  { ft: 14800, r: 0, g: 168, b: 255 },
-  { ft: 16400, r: 0, g: 150, b: 255 },
-  { ft: 18000, r: 0, g: 120, b: 255 },
-  { ft: 19700, r: 0, g: 84, b: 255 },
-  { ft: 21300, r: 0, g: 48, b: 255 },
-  { ft: 23000, r: 0, g: 30, b: 255 },
-  { ft: 24600, r: 0, g: 0, b: 255 },
-  { ft: 26200, r: 18, g: 0, b: 255 },
-  { ft: 27900, r: 36, g: 0, b: 255 },
-  { ft: 29500, r: 54, g: 0, b: 255 },
-  { ft: 31200, r: 78, g: 0, b: 255 },
-  { ft: 32800, r: 96, g: 0, b: 255 },
-  { ft: 34400, r: 120, g: 0, b: 255 },
-  { ft: 36100, r: 150, g: 0, b: 255 },
-  { ft: 37700, r: 174, g: 0, b: 255 },
-  { ft: 39400, r: 216, g: 0, b: 255 },
-  { ft: 41000, r: 255, g: 0, b: 228 },
-  { ft: 42600, r: 255, g: 0, b: 0 },
-];
-
-const altToColor = (ft) => {
-  if (ft <= FR24_STOPS[0].ft) {
-    const s = FR24_STOPS[0];
-    return `rgb(${s.r},${s.g},${s.b})`;
-  }
-  if (ft >= FR24_STOPS[FR24_STOPS.length - 1].ft) {
-    const s = FR24_STOPS[FR24_STOPS.length - 1];
-    return `rgb(${s.r},${s.g},${s.b})`;
-  }
-  for (let i = 1; i < FR24_STOPS.length; i++) {
-    if (ft <= FR24_STOPS[i].ft) {
-      const lo = FR24_STOPS[i - 1],
-        hi = FR24_STOPS[i];
-      const t = (ft - lo.ft) / (hi.ft - lo.ft);
-      const r = Math.round(lo.r + t * (hi.r - lo.r));
-      const g = Math.round(lo.g + t * (hi.g - lo.g));
-      const b = Math.round(lo.b + t * (hi.b - lo.b));
-      return `rgb(${r},${g},${b})`;
-    }
-  }
-};
-
-// --- Geometry helpers ---
-const bearing = (lat1, lon1, lat2, lon2) => {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const φ1 = toRad(lat1),
-    φ2 = toRad(lat2);
-  const Δλ = toRad(lon2 - lon1);
-  const y = Math.sin(Δλ) * Math.cos(φ2);
-  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
-};
-
-const destination = (lat, lon, brg, distM) => {
-  const R = 6378137;
-  const δ = distM / R;
-  const θ = (brg * Math.PI) / 180;
-  const φ1 = (lat * Math.PI) / 180;
-  const λ1 = (lon * Math.PI) / 180;
-  const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
-  const λ2 = λ1 + Math.atan2(Math.sin(θ) * Math.sin(δ) * Math.cos(φ1), Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2));
-  return [(φ2 * 180) / Math.PI, (((λ2 * 180) / Math.PI + 540) % 360) - 180];
-};
-
-const distanceM = (lat1, lon1, lat2, lon2) => {
-  const R = 6378137;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-const offsetPolyline = (points, offsetM) => {
-  return points.map((pt, i) => {
-    const prev = points[Math.max(0, i - 1)];
-    const next = points[Math.min(points.length - 1, i + 1)];
-    const brg = bearing(prev[0], prev[1], next[0], next[1]);
-    return destination(pt[0], pt[1], (brg + 90) % 360, offsetM);
-  });
-};
-
-const designatorToHeading = (des) => {
-  if (!des) return null;
-  const num = parseInt(des.replace(/[^0-9]/g, ""), 10);
-  if (isNaN(num)) return null;
-  return (num * 10) % 360;
-};
-
-const angleDiff = (a, b) => {
-  const d = Math.abs((a - b + 360) % 360);
-  return d > 180 ? 360 - d : d;
-};
-
-// --- Path simplification ---
-const toleranceForGS = (gs) => {
-  if (gs < 50) return 0.000015;
-  if (gs < 150) return 0.000015;
-  if (gs < 300) return 0.00007;
-  return 0.00015;
-};
-
-const rdpPerpendicularDist = (point, lineStart, lineEnd) => {
-  const [px, py] = [point[1], point[0]];
-  const [x1, y1] = [lineStart[1], lineStart[0]];
-  const [x2, y2] = [lineEnd[1], lineEnd[0]];
-  const dx = x2 - x1,
-    dy = y2 - y1;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
-  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
-  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
-};
-
-const rdpAdaptive = (points, tolerances) => {
-  if (points.length <= 2) return points;
-  let maxDist = 0,
-    maxIdx = 0;
-  for (let i = 1; i < points.length - 1; i++) {
-    const d = rdpPerpendicularDist(points[i], points[0], points[points.length - 1]);
-    if (d > maxDist) {
-      maxDist = d;
-      maxIdx = i;
-    }
-  }
-  const segTolerance = Math.min(tolerances[0], tolerances[tolerances.length - 1]);
-  if (maxDist > segTolerance) {
-    const left = rdpAdaptive(points.slice(0, maxIdx + 1), tolerances.slice(0, maxIdx + 1));
-    const right = rdpAdaptive(points.slice(maxIdx), tolerances.slice(maxIdx));
-    return [...left.slice(0, -1), ...right];
-  }
-  return [points[0], points[points.length - 1]];
-};
-
-const nearestPointOnPolyline = (latlng, points) => {
-  let minDist = Infinity,
-    nearest = null,
-    nearestIdx = 0;
-  for (let i = 0; i < points.length; i++) {
-    const d = Math.hypot(points[i][0] - latlng.lat, points[i][1] - latlng.lng);
-    if (d < minDist) {
-      minDist = d;
-      nearest = points[i];
-      nearestIdx = i;
-    }
-  }
-  return { point: nearest, idx: nearestIdx };
-};
-
-// --- Chart ---
 const chartData = computed(() => {
   if (!props.flightData?.path) return [];
   let totalDist = 0;
@@ -224,7 +81,7 @@ const chartData = computed(() => {
 });
 
 const handleAxisPointer = (params) => {
-  if (!params.axesInfo || !map) return;
+  if (!params.axesInfo?.[0] || !map) return;
   const dataIndex = params.axesInfo[0].value;
   const point = chartData.value[dataIndex];
   if (!point) return;
@@ -291,204 +148,30 @@ const chartOptions = computed(() => ({
   ],
 }));
 
-// --- Runway drawing (restored from original + displaced threshold support) ---
-const drawRunway = (el) => {
-  if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
-  let cl = el.geometry.map((g) => [g.lat, g.lon]);
-  const widthM = el.tags?.width ? parseFloat(el.tags.width) : 45;
-  const half = widthM / 2;
-  if (el.tags?.ref) {
-    const [leRef] = el.tags.ref.split("/");
-    const leHeading = designatorToHeading(leRef);
-    if (leHeading !== null) {
-      const actualBearing = bearing(cl[0][0], cl[0][1], cl[cl.length - 1][0], cl[cl.length - 1][1]);
-      if (angleDiff(actualBearing, leHeading) > 90) cl = [...cl].reverse();
-    }
-  }
-  const leInward = bearing(cl[0][0], cl[0][1], cl[1][0], cl[1][1]);
-  const heInward = bearing(cl[cl.length - 1][0], cl[cl.length - 1][1], cl[cl.length - 2][0], cl[cl.length - 2][1]);
-  const right = offsetPolyline(cl, half);
-  const left = offsetPolyline(cl, -half);
-  pathLayers.push(L.polygon([...right, ...[...left].reverse()], { color: "transparent", fillColor: "#111111", fillOpacity: 1, interactive: false, pane: "runwaysPane" }).addTo(map));
-  [right, left].forEach((edge) => {
-    pathLayers.push(L.polyline(edge, { color: "#ffffff", weight: 2, opacity: 0.9, interactive: false, pane: "runwaysPane" }).addTo(map));
-  });
-  pathLayers.push(L.polyline(cl, { color: "#ffffff", weight: 1.5, opacity: 0.65, dashArray: "20 15", interactive: false, pane: "runwaysPane" }).addTo(map));
-
-  // Displaced threshold detection: OSM tags displaced_threshold:le / displaced_threshold:he (metres)
-  const leDisplaced = el.tags?.["displaced_threshold:le"] ? parseFloat(el.tags["displaced_threshold:le"]) : 0;
-  const heDisplaced = el.tags?.["displaced_threshold:he"] ? parseFloat(el.tags["displaced_threshold:he"]) : 0;
-
-  // Draws the displaced threshold zone:
-  // - Transverse bar at the pavement end
-  // - Solid filled arrow polygons pointing INWARD (toward landing threshold), spaced through the zone
-  // - Solid transverse bar at the actual (displaced) threshold line
-  const drawDisplacedZone = (pavementEnd, inwardBrg, displaceM, landingThreshold) => {
-    if (displaceM <= 0) return;
-    const perpBrg = (inwardBrg + 90) % 360;
-    const oppBrg = (inwardBrg + 180) % 360;
-
-    // 1. Transverse bar at pavement end
-    const barL = destination(pavementEnd[0], pavementEnd[1], (perpBrg + 180) % 360, half * 0.85);
-    const barR = destination(pavementEnd[0], pavementEnd[1], perpBrg, half * 0.85);
-    pathLayers.push(L.polyline([barL, barR], { color: "#ffffff", weight: 2.5, opacity: 0.85, interactive: false, pane: "runwaysPane" }).addTo(map));
-
-    // 2. Solid filled arrow polygons pointing inward (toward landing threshold)
-    //    Real markings: typically 3 arrows evenly spaced laterally, repeated every ~50 m along zone
-    const arrowSpacingM = Math.min(50, displaceM / 1.5);
-    const arrowCount = Math.max(1, Math.round(displaceM / arrowSpacingM));
-    const arrowW = half * 0.28; // half-width of arrow base
-    const arrowBodyLen = 20; // shaft length
-    const arrowHeadLen = 14; // head length
-    const lateralSlots = [-half * 0.45, 0, half * 0.45]; // 3 columns
-
-    for (let i = 0; i < arrowCount; i++) {
-      // Place arrows so they don't crowd the pavement-end bar or the threshold bar
-      const alongDist = (i + 0.5) * (displaceM / arrowCount);
-      const rowCenter = destination(pavementEnd[0], pavementEnd[1], inwardBrg, alongDist);
-
-      for (const latOff of lateralSlots) {
-        const base = destination(rowCenter[0], rowCenter[1], perpBrg, latOff);
-
-        // Tail (wide base) — at the outboard / pavement-end side of the arrow
-        const tailCenter = destination(base[0], base[1], oppBrg, arrowBodyLen / 2);
-        const tL = destination(tailCenter[0], tailCenter[1], (perpBrg + 180) % 360, arrowW * 0.55);
-        const tR = destination(tailCenter[0], tailCenter[1], perpBrg, arrowW * 0.55);
-
-        // Mid point (narrowing toward head)
-        const midCenter = destination(base[0], base[1], inwardBrg, arrowBodyLen / 2);
-        const mL = destination(midCenter[0], midCenter[1], (perpBrg + 180) % 360, arrowW * 0.55);
-        const mR = destination(midCenter[0], midCenter[1], perpBrg, arrowW * 0.55);
-
-        // Arrowhead base (wider)
-        const hBase = destination(base[0], base[1], inwardBrg, arrowBodyLen);
-        const hL = destination(hBase[0], hBase[1], (perpBrg + 180) % 360, arrowW);
-        const hR = destination(hBase[0], hBase[1], perpBrg, arrowW);
-
-        // Arrowhead tip (apex pointing inward)
-        const tip = destination(hBase[0], hBase[1], inwardBrg, arrowHeadLen);
-
-        // Draw as filled polygon: tail-left → mid-left → head-left → tip → head-right → mid-right → tail-right
-        pathLayers.push(
-          L.polygon([tL, mL, hL, tip, hR, mR, tR], {
-            color: "transparent",
-            fillColor: "#ffffff",
-            fillOpacity: 0.85,
-            interactive: false,
-            pane: "runwaysPane",
-          }).addTo(map),
-        );
-      }
-    }
-
-    // 3. Solid transverse bar at the actual (displaced) landing threshold
-    const thrL = destination(landingThreshold[0], landingThreshold[1], (perpBrg + 180) % 360, half * 0.85);
-    const thrR = destination(landingThreshold[0], landingThreshold[1], perpBrg, half * 0.85);
-    pathLayers.push(L.polyline([thrL, thrR], { color: "#ffffff", weight: 3, opacity: 1, interactive: false, pane: "runwaysPane" }).addTo(map));
-  };
-
-  // Actual landing thresholds (shifted inward by displaced amount)
-  const leThreshold = leDisplaced > 0 ? destination(cl[0][0], cl[0][1], leInward, leDisplaced) : cl[0];
-  const heThreshold = heDisplaced > 0 ? destination(cl[cl.length - 1][0], cl[cl.length - 1][1], heInward, heDisplaced) : cl[cl.length - 1];
-
-  drawDisplacedZone(cl[0], leInward, leDisplaced, leThreshold);
-  drawDisplacedZone(cl[cl.length - 1], heInward, heDisplaced, heThreshold);
-
-  const drawPianoKeys = (thresholdPt, inwardBrg) => {
-    const perpBrg = (inwardBrg + 90) % 360;
-    const numStripes = 8,
-      spanM = widthM * 0.8,
-      gap = spanM / (numStripes - 1);
-    const stripeHalfW = (spanM / (numStripes * 2 - 1)) * 0.45,
-      depthM = 30,
-      inboardM = 6;
-    for (let i = 0; i < numStripes; i++) {
-      const lateralOffset = -spanM / 2 + gap * i;
-      const center = destination(thresholdPt[0], thresholdPt[1], perpBrg, lateralOffset);
-      const near = destination(center[0], center[1], inwardBrg, inboardM);
-      const far = destination(near[0], near[1], inwardBrg, depthM);
-      const p1 = destination(near[0], near[1], perpBrg, stripeHalfW);
-      const p2 = destination(far[0], far[1], perpBrg, stripeHalfW);
-      const p3 = destination(far[0], far[1], (perpBrg + 180) % 360, stripeHalfW);
-      const p4 = destination(near[0], near[1], (perpBrg + 180) % 360, stripeHalfW);
-      pathLayers.push(L.polygon([p1, p2, p3, p4], { color: "transparent", fillColor: "#ffffff", fillOpacity: 0.85, interactive: false, pane: "runwaysPane" }).addTo(map));
-    }
-  };
-  drawPianoKeys(leThreshold, leInward);
-  drawPianoKeys(heThreshold, heInward);
-
-  const runwayLen = distanceM(leThreshold[0], leThreshold[1], heThreshold[0], heThreshold[1]);
-  const tzDistances = [150, 300, 450, 600, 750, 900].filter((d) => d < runwayLen - 150);
-  const barLenM = 22.5,
-    barWidthM = 3,
-    barLateralM = widthM * 0.2;
-  const drawTDZBars = (thresholdPt, inwardBrg) => {
-    const perpBrg = (inwardBrg + 90) % 360;
-    tzDistances.forEach((dist) => {
-      const along = destination(thresholdPt[0], thresholdPt[1], inwardBrg, dist);
-      [-barLateralM, barLateralM].forEach((latOff) => {
-        const bc = destination(along[0], along[1], perpBrg, latOff);
-        const fwd = destination(bc[0], bc[1], inwardBrg, barLenM / 2);
-        const aft = destination(bc[0], bc[1], (inwardBrg + 180) % 360, barLenM / 2);
-        const p1 = destination(fwd[0], fwd[1], perpBrg, barWidthM / 2);
-        const p2 = destination(aft[0], aft[1], perpBrg, barWidthM / 2);
-        const p3 = destination(aft[0], aft[1], (perpBrg + 180) % 360, barWidthM / 2);
-        const p4 = destination(fwd[0], fwd[1], (perpBrg + 180) % 360, barWidthM / 2);
-        pathLayers.push(L.polygon([p1, p2, p3, p4], { color: "transparent", fillColor: "#ffffff", fillOpacity: 0.75, interactive: false, pane: "runwaysPane" }).addTo(map));
-      });
-    });
-  };
-  drawTDZBars(leThreshold, leInward);
-  drawTDZBars(heThreshold, heInward);
-
-  if (el.tags?.ref) {
-    let parts = el.tags.ref.split("/");
-    let leRef = parts[0],
-      heRef = parts[1];
-    if (leRef && heRef) {
-      const hdg1 = parseInt(leRef, 10) * 10;
-      if (angleDiff(hdg1, leInward) > angleDiff(hdg1, heInward)) [leRef, heRef] = [heRef, leRef];
-    }
-    const addLabel = (thresholdPt, inwardBrg, label) => {
-      if (!label) return;
-      const pos = destination(thresholdPt[0], thresholdPt[1], inwardBrg, 55);
-      const icon = L.divIcon({ html: `<div class="rwy-designator" style="transform:rotate(${inwardBrg}deg)">${label}</div>`, className: "", iconSize: [40, 20], iconAnchor: [20, 10] });
-      pathLayers.push(L.marker(pos, { icon, interactive: false }).addTo(map));
-    };
-    addLabel(leThreshold, leInward, leRef);
-    addLabel(heThreshold, heInward, heRef);
-  }
-};
-
-const fetchAndDrawRunways = async (lat, lon) => {
-  const key = localCacheKey(lat, lon);
-  if (runwayCache.has(key)) {
-    runwayCache.get(key).forEach(drawRunway);
-    return;
-  }
-  if (pendingRequests.has(key)) return;
-  pendingRequests.add(key);
-  try {
-    const response = await api.get(`/api/runways?lat=${lat}&lon=${lon}`);
-    const data = response.data;
-    if (data.elements) {
-      runwayCache.set(key, data.elements);
-      data.elements.forEach(drawRunway);
-    }
-  } catch (err) {
-    console.error(err);
-  } finally {
-    pendingRequests.delete(key);
-  }
-};
-
 const initMap = () => {
   map = L.map(mapContainer.value, { zoomControl: false }).setView([47.0, 19.0], 7);
   L.control.zoom({ position: "bottomright" }).addTo(map);
   map.createPane("runwaysPane").style.zIndex = 390;
   map.createPane("flightPathPane").style.zIndex = 410;
   map.createPane("connectionsPane").style.zIndex = 380;
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 }).addTo(map);
+  map.createPane("taxiwaysPane").style.zIndex = 385;
+  map.createPane("standsPane").style.zIndex = 395;
+  map.createPane("gatesPane").style.zIndex = 396;
+
+  tileLayerDark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 });
+  tileLayerSatellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 20, attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community" });
+
+  // Load initial map based on saved preference
+  if (mapLayer.value === "satellite") {
+    tileLayerSatellite.addTo(map);
+  } else {
+    tileLayerDark.addTo(map);
+  }
+
+  // Load initial runway visibility based on saved preference
+  if (!showRunways.value) {
+    map.getPane("runwaysPane").style.display = "none";
+  }
 };
 
 const clearMap = () => {
@@ -508,8 +191,49 @@ const clearConnections = () => {
   });
 };
 
+const clearFeatures = () => {
+  if (!map) return;
+  const layers = featureLayers.splice(0);
+  requestAnimationFrame(() => {
+    layers.forEach((l) => map.removeLayer(l));
+  });
+};
+
+const redrawFeatures = () => {
+  clearFeatures();
+  if (!map) return;
+  const options = {
+    taxiways: showTaxiways.value,
+    stands: showStands.value,
+    gates: showGates.value,
+  };
+  const anyOn = options.taxiways || options.stands || options.gates;
+  if (!anyOn) return;
+  drawnFeatureCoords.forEach(({ lat, lon }) => {
+    fetchAndDrawAirportFeatures(lat, lon, map, featureLayers, options);
+  });
+};
+
+const fetchFeaturesForLocation = (lat, lon) => {
+  const options = {
+    taxiways: showTaxiways.value,
+    stands: showStands.value,
+    gates: showGates.value,
+  };
+  const anyOn = options.taxiways || options.stands || options.gates;
+  if (!anyOn) return;
+
+  const alreadyTracked = drawnFeatureCoords.some((c) => c.lat === lat && c.lon === lon);
+  if (!alreadyTracked) {
+    drawnFeatureCoords.push({ lat, lon });
+  }
+  fetchAndDrawAirportFeatures(lat, lon, map, featureLayers, options);
+};
+
 const drawFlight = (data) => {
   clearMap();
+  drawnFeatureCoords.splice(0);
+  clearFeatures();
   if (!map || !data?.path) return;
 
   const rawPath = data.path;
@@ -521,24 +245,10 @@ const drawFlight = (data) => {
   const pointMap = new Map(rawPath.map((p) => [coordKey(p[1], p[2]), p]));
   const reducedPath = simplifiedCoords.map((coord) => pointMap.get(coordKey(coord[0], coord[1])) || [null, coord[0], coord[1], 0, 0]);
 
-  // Flat arrays over the RDP-reduced path — altitude/speed are carried through
-  // from the original data via the pointMap lookup, so all fidelity is preserved.
   const allPoints = reducedPath.map((p) => [p[1], p[2]]);
   const allAltitudes = reducedPath.map((p) => p[3] || 0);
   const allSpeeds = reducedPath.map((p) => p[4] || 0);
 
-  // --- OPTIMIZATION: tolerance-based colour-run merging ---
-  // With a continuous gradient, exact colour equality never occurs, so instead of
-  // one polyline per segment (O(N) layers) we merge consecutive segments whose
-  // representative colour is within RGB_MERGE_DELTA of each other into a single
-  // multi-point polyline.  On a typical cruise segment where altitude is nearly
-  // constant this collapses hundreds of segments into one layer, matching the
-  // performance of the original same-colour grouping while still producing a
-  // smooth gradient on climbs/descents.
-  //
-  // RGB_MERGE_DELTA = 6 (out of 255) is visually imperceptible but tight enough
-  // that an ascent from 0 → 42 600 ft produces ~200 distinct polylines rather
-  // than ~1000 (for a well-simplified path), keeping the DOM lean.
   const RGB_MERGE_DELTA = 6;
 
   const parseRgb = (rgbStr) => {
@@ -548,10 +258,6 @@ const drawFlight = (data) => {
 
   const rgbClose = (a, b) => Math.abs(a.r - b.r) <= RGB_MERGE_DELTA && Math.abs(a.g - b.g) <= RGB_MERGE_DELTA && Math.abs(a.b - b.b) <= RGB_MERGE_DELTA;
 
-  // Build merged colour-run groups.
-  // Each group: { color, rgb, points[], altitudes[], speeds[] }
-  // Points include the shared boundary point so adjacent groups overlap by one
-  // vertex — this is the same technique the original code used.
   const colorGroups = [];
   let curGroup = null;
 
@@ -561,8 +267,6 @@ const drawFlight = (data) => {
     const rgb = parseRgb(color);
 
     if (!curGroup || !rgbClose(curGroup.rgb, rgb)) {
-      // Start a new group; if there was a previous one, give it the shared boundary
-      // point so there is no gap between polylines.
       if (curGroup) {
         curGroup.points.push(allPoints[i]);
         curGroup.altitudes.push(allAltitudes[i]);
@@ -571,7 +275,6 @@ const drawFlight = (data) => {
       curGroup = { color, rgb, points: [allPoints[i]], altitudes: [allAltitudes[i]], speeds: [allSpeeds[i]] };
       colorGroups.push(curGroup);
     }
-    // Always append the end-point of this segment to the current group.
     curGroup.points.push(allPoints[i + 1]);
     curGroup.altitudes.push(allAltitudes[i + 1]);
     curGroup.speeds.push(allSpeeds[i + 1]);
@@ -605,7 +308,8 @@ const drawFlight = (data) => {
 
   if (data.path && data.path.length > 0) {
     const departurePoint = data.path[0];
-    fetchAndDrawRunways(departurePoint[1], departurePoint[2]);
+    fetchAndDrawRunways(departurePoint[1], departurePoint[2], map, pathLayers);
+    fetchFeaturesForLocation(departurePoint[1], departurePoint[2]);
   }
 
   if (data.landings?.length) {
@@ -628,7 +332,8 @@ const drawFlight = (data) => {
         { className: "flight-popup", maxWidth: 300 },
       );
       pathLayers.push(marker);
-      fetchAndDrawRunways(landing.lat, landing.lon);
+      fetchAndDrawRunways(landing.lat, landing.lon, map, pathLayers);
+      fetchFeaturesForLocation(landing.lat, landing.lon);
     });
   }
 
@@ -637,38 +342,6 @@ const drawFlight = (data) => {
   }
 };
 
-// --- Connections feature ---
-
-const loadAirportsJson = async () => {
-  if (airportsJsonData) return airportsJsonData;
-  try {
-    // Try the backend airports.json first (same source as backend uses)
-    const response = await fetch("https://raw.githubusercontent.com/mwgg/Airports/master/airports.json");
-    airportsJsonData = await response.json();
-    return airportsJsonData;
-  } catch (e) {
-    console.error("Failed to load airports.json", e);
-    return {};
-  }
-};
-
-const getAirportCoords = async (icao) => {
-  if (!icao) return null;
-  const upper = icao.toUpperCase();
-  if (airportCoordCache.has(upper)) return airportCoordCache.get(upper);
-
-  const airports = await loadAirportsJson();
-  const airport = airports[upper];
-  if (airport && airport.lat != null && airport.lon != null) {
-    const coords = [parseFloat(airport.lat), parseFloat(airport.lon)];
-    airportCoordCache.set(upper, coords);
-    return coords;
-  }
-  airportCoordCache.set(upper, null);
-  return null;
-};
-
-// Compute unique connection pairs from flights (sorted so LHBP-LGZA and LGZA-LHBP are same pair)
 const computeConnections = (flightList) => {
   const pairMap = new Map();
 
@@ -676,10 +349,8 @@ const computeConnections = (flightList) => {
     const dep = flight.dep_icao;
     const arr = flight.arr_icao;
 
-    // Skip incomplete flights (either end is null/empty)
     if (!dep || !arr || dep === "NULL" || arr === "NULL") continue;
 
-    // Normalize: sort alphabetically to group both directions
     const key = [dep.toUpperCase(), arr.toUpperCase()].sort().join("_");
     const depUpper = dep.toUpperCase();
     const arrUpper = arr.toUpperCase();
@@ -706,8 +377,7 @@ const drawConnections = async () => {
 
   const connections = computeConnections(props.flights);
 
-  // Collect unique airports to draw dots (deduplicated)
-  const airportDots = new Map(); // icao -> coords
+  const airportDots = new Map();
 
   for (const conn of connections) {
     const coords1 = await getAirportCoords(conn.icao1);
@@ -720,7 +390,6 @@ const drawConnections = async () => {
 
     const label = `${conn.icao1} – ${conn.icao2} (${conn.count} járat)`;
 
-    // Visible dashed line (thin, styled)
     const visLine = L.polyline([coords1, coords2], {
       color: "#94a3b8",
       weight: 2,
@@ -730,7 +399,6 @@ const drawConnections = async () => {
       pane: "connectionsPane",
     });
 
-    // Wide invisible hit target on top for easy mouse interaction
     const hitLine = L.polyline([coords1, coords2], {
       color: "#000",
       weight: 18,
@@ -754,7 +422,6 @@ const drawConnections = async () => {
 
     hitLine.on("click", (e) => {
       L.DomEvent.stop(e);
-      // Remove focus outline immediately after click
       const el = hitLine.getElement?.();
       if (el) el.blur();
       const dep = conn.icao1.toLowerCase();
@@ -768,9 +435,7 @@ const drawConnections = async () => {
     connectionLayers.push(visLine, hitLine);
   }
 
-  // Draw airport dots for every unique airport in the connections
   for (const [icao, coords] of airportDots) {
-    // Outer glow ring
     const ring = L.circleMarker(coords, {
       radius: 6,
       color: "#94a3b8",
@@ -782,7 +447,6 @@ const drawConnections = async () => {
       pane: "connectionsPane",
     });
 
-    // Inner filled dot
     const dot = L.circleMarker(coords, {
       radius: 3,
       color: "transparent",
@@ -822,6 +486,40 @@ watch(
   { deep: true },
 );
 
+// Watchers that save state to localStorage
+watch(mapLayer, (val) => {
+  localStorage.setItem("flightMap_layer", JSON.stringify(val));
+  if (!map) return;
+  if (val === "satellite") {
+    map.removeLayer(tileLayerDark);
+    tileLayerSatellite.addTo(map);
+  } else {
+    map.removeLayer(tileLayerSatellite);
+    tileLayerDark.addTo(map);
+  }
+});
+
+watch(showRunways, (val) => {
+  localStorage.setItem("flightMap_showRunways", JSON.stringify(val));
+  if (!map) return;
+  map.getPane("runwaysPane").style.display = val ? "" : "none";
+});
+
+watch(showTaxiways, (val) => {
+  localStorage.setItem("flightMap_showTaxiways", JSON.stringify(val));
+  redrawFeatures();
+});
+
+watch(showStands, (val) => {
+  localStorage.setItem("flightMap_showStands", JSON.stringify(val));
+  redrawFeatures();
+});
+
+watch(showGates, (val) => {
+  localStorage.setItem("flightMap_showGates", JSON.stringify(val));
+  redrawFeatures();
+});
+
 onMounted(() => {
   initMap();
   if (props.flightData) drawFlight(props.flightData);
@@ -832,15 +530,55 @@ onMounted(() => {
   <main class="flex-grow relative">
     <div ref="mapContainer" class="absolute inset-0 w-full h-full z-0"></div>
 
-    <!-- Bottom left controls -->
+    <div class="absolute top-4 right-4 z-[1000] flex flex-col items-end">
+      <button @click="isLayersMenuOpen = !isLayersMenuOpen" class="bg-slate-900/90 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl border border-slate-700 shadow-2xl flex items-center gap-2 transition-all">
+        <i class="fa-solid fa-map text-cyan-400"></i>
+        <span class="font-bold text-xs uppercase tracking-widest">Rétegek</span>
+        <i class="fa-solid fa-chevron-down text-slate-400 text-[10px] transition-transform ml-1" :class="{ 'rotate-180': isLayersMenuOpen }"></i>
+      </button>
+
+      <div v-show="isLayersMenuOpen" class="mt-2 w-48 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden">
+        <div class="flex flex-col p-1 gap-0.5">
+          <button @click="mapLayer = 'dark'" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', mapLayer === 'dark' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-moon w-3.5 text-center"></i>
+            <span>Sötét</span>
+            <span v-if="mapLayer === 'dark'" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          </button>
+          <button @click="mapLayer = 'satellite'" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', mapLayer === 'satellite' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-satellite w-3.5 text-center"></i>
+            <span>Műhold</span>
+            <span v-if="mapLayer === 'satellite'" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          </button>
+
+          <div class="my-0.5 border-t border-slate-700/60"></div>
+
+          <button @click="showRunways = !showRunways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showRunways ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-plane-departure w-3.5 text-center"></i>
+            <span>Pályák</span>
+            <span v-if="showRunways" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          </button>
+
+          <button @click="showTaxiways = !showTaxiways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showTaxiways ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-road w-3.5 text-center"></i>
+            <span>Gurulóutak</span>
+            <span v-if="showTaxiways" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </button>
+
+          <button @click="showStands = !showStands" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showStands ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-parking w-3.5 text-center"></i>
+            <span>Állóhelyek</span>
+            <span v-if="showStands" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="absolute bottom-6 left-6 z-[1000] flex flex-col gap-2">
-      <!-- Flight chart toggle -->
       <button @click="isChartVisible = !isChartVisible" class="bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group">
         <i class="fa-solid fa-chart-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
         <span class="font-bold text-xs uppercase tracking-widest">Grafikon</span>
       </button>
 
-      <!-- Connections toggle -->
       <button @click="showConnections = !showConnections" :class="['px-5 py-2.5 rounded-full border shadow-2xl flex items-center gap-2 transition-all group', showConnections ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/60 text-cyan-300' : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-white']">
         <i :class="['fa-solid fa-route transition-transform group-hover:scale-110', showConnections ? 'text-cyan-400' : 'text-slate-400']"></i>
         <span class="font-bold text-xs uppercase tracking-widest">Kapcsolatok</span>
@@ -848,7 +586,6 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Chart panel -->
     <div v-if="isChartVisible" class="absolute bottom-30 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
       <div class="flex justify-between items-center mb-2 px-2">
         <h4 class="text-white text-[10px] font-black uppercase tracking-tighter opacity-50">Flight Profile</h4>
@@ -915,11 +652,85 @@ onMounted(() => {
   padding: 4px 10px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
+.taxiway-tooltip {
+  background: #1c1400;
+  color: #fcd34d;
+  border: 1px solid #92400e;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  font-weight: 700;
+  padding: 2px 8px;
+}
+.taxiway-label-marker {
+  color: #c58d00;
+  font-family: "Arial Narrow", Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 900;
+  text-shadow:
+    0 0 3px #000,
+    0 0 6px #000;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.stand-marker {
+  color: #fdba74;
+  font-family: "Arial Narrow", Arial, sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  text-shadow:
+    0 0 3px #000,
+    0 0 5px #000;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.stand-tooltip {
+  background: #1c0a00;
+  color: #fed7aa;
+  border: 1px solid #9a3412;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  padding: 3px 8px;
+}
+.gate-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.gate-marker i {
+  color: #86efac;
+  font-size: 10px;
+  text-shadow: 0 0 4px #000;
+}
+.gate-marker span {
+  color: #86efac;
+  font-family: "Arial Narrow", Arial, sans-serif;
+  font-size: 9px;
+  font-weight: 900;
+  text-shadow:
+    0 0 3px #000,
+    0 0 5px #000;
+  white-space: nowrap;
+}
+.gate-tooltip {
+  background: #001a08;
+  color: #bbf7d0;
+  border: 1px solid #166534;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  padding: 3px 8px;
+}
 .chart {
   height: 100%;
   width: 100%;
 }
-/* Kill the ugly browser focus rectangle on clicked Leaflet SVG paths */
 .leaflet-interactive:focus {
   outline: none;
 }
