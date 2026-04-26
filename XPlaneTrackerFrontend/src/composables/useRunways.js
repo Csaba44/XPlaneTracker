@@ -120,6 +120,7 @@ export const drawRunway = (el, map, pathLayers) => {
     barWidthM = 3,
     barLateralM = widthM * 0.2;
   const drawTDZBars = (thresholdPt, inwardBrg) => {
+    console.log("TDZ:", thresholdPt, inwardBrg);
     const perpBrg = (inwardBrg + 90) % 360;
     tzDistances.forEach((dist) => {
       const along = destination(thresholdPt[0], thresholdPt[1], inwardBrg, dist);
@@ -135,9 +136,11 @@ export const drawRunway = (el, map, pathLayers) => {
       });
     });
   };
-  drawTDZBars(leThreshold, leInward);
-  drawTDZBars(heThreshold, heInward);
 
+  const trueLEInward = bearing(leThreshold[0], leThreshold[1], heThreshold[0], heThreshold[1]);
+  const trueHEInward = bearing(heThreshold[0], heThreshold[1], leThreshold[0], leThreshold[1]);
+  drawTDZBars(leThreshold, trueLEInward);
+  drawTDZBars(heThreshold, trueHEInward);
   if (el.tags?.ref) {
     let parts = el.tags.ref.split("/");
     let leRef = parts[0],
