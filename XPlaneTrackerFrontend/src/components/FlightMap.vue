@@ -31,15 +31,30 @@ const props = defineProps({
 
 const emit = defineEmits(["setSearchQuery"]);
 
+// Helper for local storage
+const getStorage = (key, defaultVal) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item !== null ? JSON.parse(item) : defaultVal;
+  } catch {
+    return defaultVal;
+  }
+};
+
 const mapContainer = ref(null);
 const isChartVisible = ref(false);
 const showConnections = ref(false);
 const chartRef = ref(null);
-const mapLayer = ref("dark");
-const showRunways = ref(true);
-const showTaxiways = ref(true);
-const showStands = ref(false);
-const showGates = ref(false);
+
+// Layers state synced with localStorage
+const mapLayer = ref(getStorage("flightMap_layer", "dark"));
+const showRunways = ref(getStorage("flightMap_showRunways", true));
+const showTaxiways = ref(getStorage("flightMap_showTaxiways", true));
+const showStands = ref(getStorage("flightMap_showStands", false));
+const showGates = ref(getStorage("flightMap_showGates", false));
+
+const isLayersMenuOpen = ref(false);
+
 let map = null;
 let pathLayers = [];
 let connectionLayers = [];
@@ -146,7 +161,17 @@ const initMap = () => {
   tileLayerDark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 });
   tileLayerSatellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 20, attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community" });
 
-  tileLayerDark.addTo(map);
+  // Load initial map based on saved preference
+  if (mapLayer.value === "satellite") {
+    tileLayerSatellite.addTo(map);
+  } else {
+    tileLayerDark.addTo(map);
+  }
+
+  // Load initial runway visibility based on saved preference
+  if (!showRunways.value) {
+    map.getPane("runwaysPane").style.display = "none";
+  }
 };
 
 const clearMap = () => {
@@ -461,7 +486,9 @@ watch(
   { deep: true },
 );
 
+// Watchers that save state to localStorage
 watch(mapLayer, (val) => {
+  localStorage.setItem("flightMap_layer", JSON.stringify(val));
   if (!map) return;
   if (val === "satellite") {
     map.removeLayer(tileLayerDark);
@@ -473,13 +500,25 @@ watch(mapLayer, (val) => {
 });
 
 watch(showRunways, (val) => {
+  localStorage.setItem("flightMap_showRunways", JSON.stringify(val));
   if (!map) return;
   map.getPane("runwaysPane").style.display = val ? "" : "none";
 });
 
-watch(showTaxiways, () => redrawFeatures());
-watch(showStands, () => redrawFeatures());
-watch(showGates, () => redrawFeatures());
+watch(showTaxiways, (val) => {
+  localStorage.setItem("flightMap_showTaxiways", JSON.stringify(val));
+  redrawFeatures();
+});
+
+watch(showStands, (val) => {
+  localStorage.setItem("flightMap_showStands", JSON.stringify(val));
+  redrawFeatures();
+});
+
+watch(showGates, (val) => {
+  localStorage.setItem("flightMap_showGates", JSON.stringify(val));
+  redrawFeatures();
+});
 
 onMounted(() => {
   initMap();
@@ -491,14 +530,15 @@ onMounted(() => {
   <main class="flex-grow relative">
     <div ref="mapContainer" class="absolute inset-0 w-full h-full z-0"></div>
 
-    <!-- Top right layer menu -->
-    <div class="absolute top-4 right-4 z-[1000]">
-      <div class="bg-slate-900/90 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden">
-        <div class="px-3 py-1.5 border-b border-slate-700/60">
-          <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Rétegek</span>
-        </div>
+    <div class="absolute top-4 right-4 z-[1000] flex flex-col items-end">
+      <button @click="isLayersMenuOpen = !isLayersMenuOpen" class="bg-slate-900/90 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl border border-slate-700 shadow-2xl flex items-center gap-2 transition-all">
+        <i class="fa-solid fa-map text-cyan-400"></i>
+        <span class="font-bold text-xs uppercase tracking-widest">Rétegek</span>
+        <i class="fa-solid fa-chevron-down text-slate-400 text-[10px] transition-transform ml-1" :class="{ 'rotate-180': isLayersMenuOpen }"></i>
+      </button>
+
+      <div v-show="isLayersMenuOpen" class="mt-2 w-48 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md overflow-hidden">
         <div class="flex flex-col p-1 gap-0.5">
-          <!-- Base map options -->
           <button @click="mapLayer = 'dark'" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', mapLayer === 'dark' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-moon w-3.5 text-center"></i>
             <span>Sötét</span>
@@ -510,10 +550,8 @@ onMounted(() => {
             <span v-if="mapLayer === 'satellite'" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
 
-          <!-- Divider -->
           <div class="my-0.5 border-t border-slate-700/60"></div>
 
-          <!-- Overlay toggles -->
           <button @click="showRunways = !showRunways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showRunways ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-plane-departure w-3.5 text-center"></i>
             <span>Pályák</span>
@@ -531,17 +569,10 @@ onMounted(() => {
             <span>Állóhelyek</span>
             <span v-if="showStands" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
           </button>
-
-          <!-- <button @click="showGates = !showGates" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showGates ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
-            <i class="fa-solid fa-door-open w-3.5 text-center"></i>
-            <span>Kapuk</span>
-            <span v-if="showGates" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
-          </button>-->
         </div>
       </div>
     </div>
 
-    <!-- Bottom left controls -->
     <div class="absolute bottom-6 left-6 z-[1000] flex flex-col gap-2">
       <button @click="isChartVisible = !isChartVisible" class="bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group">
         <i class="fa-solid fa-chart-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
@@ -555,7 +586,6 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Chart panel -->
     <div v-if="isChartVisible" class="absolute bottom-30 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
       <div class="flex justify-between items-center mb-2 px-2">
         <h4 class="text-white text-[10px] font-black uppercase tracking-tighter opacity-50">Flight Profile</h4>
