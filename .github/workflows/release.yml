@@ -19,17 +19,18 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pyinstaller rich SimConnect python-dotenv
+          pip install requests pyinstaller rich SimConnect python-dotenv pypresence customtkinter
 
       - name: Create .env file
         shell: bash
         run: |
           echo "DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}" > XPlaneTracker/.env
+          echo "DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}" >> XPlaneTracker/.env
 
       - name: Build EXE
         working-directory: ./XPlaneTracker
         run: |
-          pyinstaller --onefile --name "CSABOLANTA" --add-data ".env;." --collect-all SimConnect main.py
+          pyinstaller --onefile --windowed --name "CSABOLANTA" --add-data ".env;." --collect-all SimConnect main.py
 
       - name: Create Release
         id: create_release
