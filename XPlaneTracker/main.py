@@ -11,6 +11,13 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 import sys
 
+try:
+    from pypresence import Presence as DiscordPresence
+    _PYPRESENCE_AVAILABLE = True
+except ImportError:
+    _PYPRESENCE_AVAILABLE = False
+    logging.warning("pypresence not installed — Discord Rich Presence disabled.")
+
 # ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     filename="log.txt",
@@ -647,6 +654,12 @@ class TrackingScreen(ctk.CTkFrame):
                 self._provider.connect()
                 self._update_status("● Tracking", GREEN)
                 self._log(f"Connected to {self.cfg['sim']}")
+                rpc.update(
+                    callsign=self.cfg.get("callsign", ""),
+                    aircraft=self.cfg.get("ac_type", ""),
+                    registration=self.cfg.get("reg", ""),
+                    state="Flying",
+                )
             except Exception as e:
                 self._update_status("✖ Connection failed", RED)
                 self._log(f"ERROR: {e}")
@@ -832,6 +845,7 @@ class TrackingScreen(ctk.CTkFrame):
 
     def _stop(self):
         self._tracking = False
+        rpc.clear()
         if self._provider:
             try:
                 self._provider.close()
@@ -954,6 +968,137 @@ class UploadDialog(ctk.CTkToplevel):
             self.on_done()
 
 
+
+# ═════════════════════════════════════════════════════════════════════════════
+#  DISCORD RICH PRESENCE
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Replace with your own Discord application client ID from
+# https://discord.com/developers/applications
+DISCORD_CLIENT_ID = "1498061987870015779"
+
+class RichPresenceManager:
+    """Runs pypresence synchronously in its own thread with its own event loop.
+    Uses nest_asyncio to prevent 'event loop already running' conflicts."""
+
+    def __init__(self):
+        self._rpc = None
+        self._running = False
+        self._connected = False
+        self._pending_update = None
+        self._lock = threading.Lock()
+        self._thread = None
+
+    def start(self):
+        if not _PYPRESENCE_AVAILABLE:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._worker, daemon=True, name="rpc-thread")
+        self._thread.start()
+
+    @staticmethod
+    def _call(fn, *args, **kwargs):
+        """Call fn(*args, **kwargs) whether it's sync or async."""
+        import asyncio, inspect
+        result = fn(*args, **kwargs)
+        if inspect.isawaitable(result):
+            loop = asyncio.new_event_loop()
+            try:
+                return loop.run_until_complete(result)
+            finally:
+                loop.close()
+        return result
+
+    def _worker(self):
+        print(f"[RPC] worker started, client_id={DISCORD_CLIENT_ID}")
+
+        while self._running:
+            # ── Connect ───────────────────────────────────────────────────
+            if not self._connected:
+                try:
+                    self._rpc = DiscordPresence(DISCORD_CLIENT_ID)
+                    self._call(self._rpc.connect)
+                    self._connected = True
+                    print("[RPC] connected to Discord!")
+                    logging.info("Discord RPC connected.")
+                    # Set idle presence immediately so Discord registers the app
+                    try:
+                        self._call(self._rpc.update,
+                                   details="Repülőzzünk, shavale! 🍀",
+                                   state="Waiting for flight…",
+                                   large_image="csabolanta",
+                                   large_text="CSABOLANTA Flight Tracker",
+                                   instance=False)
+                        print("[RPC] idle presence set")
+                    except Exception as ie:
+                        print(f"[RPC] idle presence failed: {ie}")
+                except Exception as e:
+                    print(f"[RPC] connect failed: {e}")
+                    logging.warning(f"Discord RPC connect failed: {e}")
+                    self._rpc = None
+                    self._connected = False
+                    time.sleep(15)
+                    continue
+
+            # ── Send pending update ───────────────────────────────────────
+            with self._lock:
+                kwargs = self._pending_update
+                self._pending_update = None
+
+            if kwargs is not None:
+                try:
+                    if kwargs == {}:
+                        self._call(self._rpc.clear)
+                        print("[RPC] presence cleared")
+                    else:
+                        self._call(self._rpc.update, **kwargs)
+                        print(f"[RPC] presence updated OK: {kwargs.get('details')} / {kwargs.get('state')}")
+                except Exception as e:
+                    print(f"[RPC] update/clear failed: {e}")
+                    logging.warning(f"Discord RPC update failed: {e}")
+                    self._connected = False
+                    self._rpc = None
+                    continue
+
+            time.sleep(0.5)
+
+        # Cleanup
+        try:
+            if self._rpc and self._connected:
+                self._call(self._rpc.close)
+        except Exception:
+            pass
+
+    def update(self, callsign="", aircraft="", registration="", state="Flying"):
+        if not _PYPRESENCE_AVAILABLE:
+            return
+        details = callsign if callsign and callsign != "unknown" else "In flight"
+        parts = [p for p in [aircraft, registration] if p and p != "unknown"]
+        ac_str = " · ".join(parts)
+        with self._lock:
+            self._pending_update = dict(
+                details=details,
+                state=ac_str if ac_str else "CSABOLANTA",
+                large_image="csabolanta",
+                large_text="CSABOLANTA Flight Tracker",
+                start=int(time.time()),
+                instance=False,
+            )
+
+    def clear(self):
+        with self._lock:
+            self._pending_update = None
+        if not _PYPRESENCE_AVAILABLE or not self._connected or not self._rpc:
+            return
+        # Schedule a clear on next worker tick via sentinel
+        with self._lock:
+            self._pending_update = {}  # empty dict = clear signal
+
+    def stop(self):
+        self._running = False
+# Global RPC instance — created once, shared across screens
+rpc = RichPresenceManager()
+
 # ═════════════════════════════════════════════════════════════════════════════
 #  APP ROOT
 # ═════════════════════════════════════════════════════════════════════════════
@@ -971,7 +1116,54 @@ class App(ctk.CTk):
         self._user_name = None
         self._current_screen = None
 
-        self._show_login()
+        rpc.start()
+
+        # Try to silently auth with saved token before showing login screen
+        saved_token = ""
+        if os.path.exists(".xtracker_token"):
+            with open(".xtracker_token") as f:
+                saved_token = f.read().strip()
+
+        if saved_token:
+            self._show_splash("Signing in…")
+            threading.Thread(target=self._try_auto_auth,
+                             args=(saved_token,), daemon=True).start()
+        else:
+            self._show_login()
+
+    def _show_splash(self, message=""):
+        self._clear()
+        frame = ctk.CTkFrame(self, fg_color=BG)
+        frame.pack(fill="both", expand=True)
+        center = ctk.CTkFrame(frame, fg_color="transparent")
+        center.place(relx=0.5, rely=0.5, anchor="center")
+        ctk.CTkLabel(center, text="CSABOLANTA",
+                     font=("Georgia", 32, "bold", "italic"),
+                     text_color=WHITE).pack(pady=(0, 6))
+        ctk.CTkLabel(center, text=message,
+                     font=("Consolas", 11),
+                     text_color=MUTED).pack()
+        self._current_screen = frame
+
+    def _try_auto_auth(self, token):
+        try:
+            r = requests.get(
+                f"{API_BASE_URL}/user",
+                headers={"Authorization": f"Bearer {token}",
+                         "Accept": "application/json"},
+                timeout=8,
+            )
+            if r.status_code == 200:
+                user = r.json()
+                self._token = token
+                self._api_base = API_BASE_URL
+                self._user_name = user.get("name", "Pilot")
+                self.after(0, self._show_setup)
+                return
+        except Exception:
+            pass
+        # Token invalid or network error — fall through to login
+        self.after(0, self._show_login)
 
     def _clear(self):
         if self._current_screen:
