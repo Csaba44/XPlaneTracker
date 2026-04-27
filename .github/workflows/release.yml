@@ -19,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pyinstaller rich SimConnect python-dotenv pypresence customtkinter
+          pip install requests pyinstaller rich SimConnect python-dotenv pypresence customtkinter darkdetect Pillow
 
       - name: Create .env file
         shell: bash
@@ -29,8 +29,9 @@ jobs:
 
       - name: Build EXE
         working-directory: ./XPlaneTracker
-        run: |
-          pyinstaller --onefile --windowed --name "CSABOLANTA" --add-data ".env;." --collect-all SimConnect main.py
+        run: >
+          pyinstaller --onefile --windowed --name "CSABOLANTA" --add-data ".env;." --collect-all customtkinter --collect-all SimConnect --hidden-import "darkdetect" --hidden-import "PIL" --hidden-import "PIL._tkinter_finder" main.py
+
 
       - name: Create Release
         id: create_release

@@ -970,7 +970,10 @@ class UploadDialog(ctk.CTkToplevel):
         self.geometry("420x260")
         self.resizable(False, False)
         self.configure(fg_color=SIDEBAR)
+        
         self.after(100, self.grab_set)
+        self.after(150, self.lift)        
+        self.after(150, self.focus_force)  
 
         self._build()
         self._upload()
