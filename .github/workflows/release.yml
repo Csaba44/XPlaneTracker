@@ -19,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pyinstaller rich SimConnect python-dotenv pypresence customtkinter darkdetect Pillow
+          pip install requests pyinstaller python-dotenv pypresence customtkinter darkdetect Pillow
 
       - name: Create .env file
         shell: bash
@@ -30,11 +30,10 @@ jobs:
       - name: Build EXE
         working-directory: ./XPlaneTracker
         run: >
-          pyinstaller --onefile --windowed --name "CSABOLANTA" --add-data ".env;." --collect-all customtkinter --collect-all SimConnect --hidden-import "darkdetect" --hidden-import "PIL" --hidden-import "PIL._tkinter_finder" main.py
+          pyinstaller --onefile --windowed --name "CSABOLANTA" --add-data ".env;." --collect-all customtkinter --hidden-import "darkdetect" --hidden-import "PIL" --hidden-import "PIL._tkinter_finder" --hidden-import "pypresence" --hidden-import "asyncio" --hidden-import "websockets" main.py
 
 
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           files: XPlaneTracker/dist/CSABOLANTA.exe
