@@ -525,39 +525,41 @@ class SetupScreen(ctk.CTkFrame):
                 raw_route  = gen.get("route", "")
                 full_route = " ".join(filter(None, [orig_icao, raw_route, dest_icao]))
 
-                # Store raw codes — ac_type_full added async below for RPC only
                 self._sb_data = {
                     "callsign":           callsign,
                     "full_flight_number": f"{airline_code}{flight_no}",
-                    "airline":            airline_code,  # raw ICAO airline code
-                    "ac_type":            ac_type_raw,   # raw ICAO type code
-                    "ac_type_full":       "",            # full name for RPC, resolved async
+                    "airline":            airline_code,
+                    "ac_type":            ac_type_raw,
                     "reg":                ac.get("reg", ""),
                     "route":              full_route,
                     "dep":                orig_icao,
                     "arr":                dest_icao,
                 }
 
-                # Fill all fields that don't need async resolution
                 for key, val in [
                     ("callsign",  callsign),
                     ("flight_no", f"{airline_code}{flight_no}"),
                     ("reg",       ac.get("reg", "")),
                     ("route",     full_route),
+                    ("ac_type",   ac_type_raw),
+                    ("airline",   airline_code),  # raw code shown first, resolved below
                 ]:
                     self._entries[key].delete(0, "end")
                     self._entries[key].insert(0, val)
 
-                # ac_type entry shows raw ICAO code (not the full name)
-                self._entries["ac_type"].delete(0, "end")
-                self._entries["ac_type"].insert(0, ac_type_raw)
-
-                # airline entry shows raw ICAO code, resolved to full name async
-                self._entries["airline"].delete(0, "end")
-                self._entries["airline"].insert(0, airline_code)
-
-                # Track pending async lookups
-                self._sb_resolving = 0
+                if airline_code:
+                    self.sb_status.configure(text="✔ SimBrief loaded, resolving airline…", text_color=GREEN)
+                    def resolve_airline(code=airline_code):
+                        full_name = get_airline_name(code)
+                        self._sb_data["airline"] = full_name
+                        def update():
+                            self._entries["airline"].delete(0, "end")
+                            self._entries["airline"].insert(0, full_name)
+                            self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN)
+                        self.after(0, update)
+                    threading.Thread(target=resolve_airline, daemon=True).start()
+                else:
+                    self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN)
             else:
                 self.sb_status.configure(text="Flight plan not found.", text_color=RED)
         except Exception as e:
