@@ -156,39 +156,41 @@ class FlightController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'flight_file' => 'required|file',
-            'aircraft_registration' => 'nullable|string|max:255',
-            'aircraft_type' => 'nullable|string|max:255'
+            'flight_file'            => 'required|file',
+            'aircraft_registration'  => 'nullable|string|max:255',
+            'aircraft_type'          => 'nullable|string|max:255',
+            'route'                  => 'nullable|string|max:2048',
         ]);
 
-        $file = $request->file('flight_file');
+        $file    = $request->file('flight_file');
         $content = gzdecode(file_get_contents($file->getRealPath()));
-        $data = json_decode($content, true);
-        $path = $file->store('flights', 'public');
+        $data    = json_decode($content, true);
+        $path    = $file->store('flights', 'public');
 
         $dep_icao = null;
         if (!empty($data['path'])) {
             $firstPoint = $data['path'][0];
-            $dep_icao = $this->getNearestIcao($firstPoint[1], $firstPoint[2]);
+            $dep_icao   = $this->getNearestIcao($firstPoint[1], $firstPoint[2]);
         }
 
         $arr_icao = null;
         if (!empty($data['landings'])) {
             $lastLanding = end($data['landings']);
-            $arr_icao = $this->getNearestIcao($lastLanding['lat'], $lastLanding['lon']);
+            $arr_icao    = $this->getNearestIcao($lastLanding['lat'], $lastLanding['lon']);
         }
 
         $flight = Flight::create([
-            'user_id' => Auth::id(),
-            'callsign' => $data['metadata']['callsign'] ?? 'unknown',
-            'flight_number' => $data['metadata']['flight_number'] ?? 'unknown',
-            'airline' => $data['metadata']['airline'] ?? 'unknown',
-            'aircraft_registration' => $request->input('aircraft_registration') ?? $data['metadata']['aircraft_registration'] ?? null,
-            'aircraft_type' => $request->input('aircraft_type') ?? $data['metadata']['aircraft_type'] ?? null,
-            'dep_icao' => $dep_icao,
-            'arr_icao' => $arr_icao,
-            'start_time' => $data['metadata']['start_time'] ?? null,
-            'file_path' => $path
+            'user_id'                => Auth::id(),
+            'callsign'               => $data['metadata']['callsign']               ?? 'unknown',
+            'flight_number'          => $data['metadata']['flight_number']          ?? 'unknown',
+            'airline'                => $data['metadata']['airline']                ?? 'unknown',
+            'aircraft_registration'  => $request->input('aircraft_registration')    ?? $data['metadata']['aircraft_registration'] ?? null,
+            'aircraft_type'          => $request->input('aircraft_type')            ?? $data['metadata']['aircraft_type']         ?? null,
+            'route'                  => $request->input('route')                    ?? $data['metadata']['route']                 ?? null,
+            'dep_icao'               => $dep_icao,
+            'arr_icao'               => $arr_icao,
+            'start_time'             => $data['metadata']['start_time']             ?? null,
+            'file_path'              => $path,
         ]);
 
         return response()->json($flight, 201);

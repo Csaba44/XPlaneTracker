@@ -13,6 +13,7 @@ class Flight extends Model
         'flight_number',
         'aircraft_registration',
         'aircraft_type',
+        'route',
         'airline',
         'dep_icao',
         'arr_icao',

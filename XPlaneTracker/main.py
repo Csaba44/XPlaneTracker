@@ -449,6 +449,7 @@ class SetupScreen(ctk.CTkFrame):
             ("Airline",       "airline"),
             ("Registration",  "reg"),
             ("Aircraft Type", "ac_type"),
+            ("Route",         "route"),
         ]
         self._entries = {}
         for label, key in fields:
@@ -474,21 +475,32 @@ class SetupScreen(ctk.CTkFrame):
                 gen = d.get("general", {})
                 ac  = d.get("aircraft", {})
                 atc = d.get("atc", {})
+                orig = d.get("origin", {})
+                dest = d.get("destination", {})
                 airline_code = gen.get("icao_airline", "")
                 flight_no    = gen.get("flight_number", "")
                 callsign     = atc.get("callsign") or f"{airline_code}{flight_no}"
+
+                # Build full route string: ORIG route DEST
+                orig_icao = orig.get("icao_code", "")
+                dest_icao = dest.get("icao_code", "")
+                raw_route = gen.get("route", "")
+                full_route = " ".join(filter(None, [orig_icao, raw_route, dest_icao]))
+
                 self._sb_data = {
                     "callsign": callsign,
                     "full_flight_number": f"{airline_code}{flight_no}",
                     "airline": airline_code,
                     "ac_type": ac.get("icaocode", ""),
                     "reg": ac.get("reg", ""),
+                    "route": full_route,
                 }
                 for key, val in [
                     ("callsign", callsign),
                     ("flight_no", f"{airline_code}{flight_no}"),
                     ("reg", ac.get("reg", "")),
                     ("ac_type", ac.get("icaocode", "")),
+                    ("route", full_route),
                 ]:
                     self._entries[key].delete(0, "end")
                     self._entries[key].insert(0, val)
@@ -500,13 +512,14 @@ class SetupScreen(ctk.CTkFrame):
 
     def _start(self):
         cfg = {
-            "sim":     self.sim_var.get(),
-            "host":    self.host_entry.get().strip() or "127.0.0.1",
-            "callsign": self._entries["callsign"].get().strip() or "unknown",
+            "sim":       self.sim_var.get(),
+            "host":      self.host_entry.get().strip() or "127.0.0.1",
+            "callsign":  self._entries["callsign"].get().strip() or "unknown",
             "flight_no": self._entries["flight_no"].get().strip() or "unknown",
-            "airline":  self._entries["airline"].get().strip() or "unknown",
-            "reg":      self._entries["reg"].get().strip(),
-            "ac_type":  self._entries["ac_type"].get().strip() or "unknown",
+            "airline":   self._entries["airline"].get().strip() or "unknown",
+            "reg":       self._entries["reg"].get().strip(),
+            "ac_type":   self._entries["ac_type"].get().strip() or "unknown",
+            "route":     self._entries["route"].get().strip(),
         }
         self.on_start(cfg)
 
@@ -525,13 +538,14 @@ class TrackingScreen(ctk.CTkFrame):
 
         self.flight_path_data = {
             "metadata": {
-                "callsign": cfg["callsign"],
-                "flight_number": cfg["flight_no"],
-                "airline": cfg["airline"],
+                "callsign":              cfg["callsign"],
+                "flight_number":         cfg["flight_no"],
+                "airline":               cfg["airline"],
                 "aircraft_registration": cfg["reg"],
-                "aircraft_type": cfg["ac_type"],
-                "simulator": cfg["sim"],
-                "start_time": datetime.now().isoformat(),
+                "aircraft_type":         cfg["ac_type"],
+                "route":                 cfg.get("route", ""),
+                "simulator":             cfg["sim"],
+                "start_time":            datetime.now().isoformat(),
                 "columns": ["timestamp", "lat", "lon", "alt", "speed"],
             },
             "path": [],
@@ -637,13 +651,27 @@ class TrackingScreen(ctk.CTkFrame):
         ctk.CTkLabel(badge, text=self.cfg["flight_no"],
                      font=("Consolas", 10), text_color=ACCENT).pack(pady=(0, 4))
         ctk.CTkLabel(badge, text=self.cfg["ac_type"],
-                     font=("Consolas", 10), text_color=MUTED).pack(pady=(0, 10))
+                     font=("Consolas", 10), text_color=MUTED).pack(pady=(0, 4))
+
+        # Show route in badge if available (truncated)
+        route_str = self.cfg.get("route", "")
+        if route_str:
+            # Show just origin → destination if long, else full
+            parts = route_str.split()
+            if len(parts) >= 2:
+                route_display = f"{parts[0]} → {parts[-1]}"
+            else:
+                route_display = route_str
+            ctk.CTkLabel(badge, text=route_display,
+                         font=("Consolas", 9), text_color=MUTED).pack(pady=(0, 10))
+        else:
+            badge.pack_configure(pady=(0, 14))
 
         Divider(p).pack(fill="x", pady=(0, 12))
 
         SectionLabel(p, "Landings").pack(anchor="w", pady=(0, 8))
         self.landings_frame = ctk.CTkScrollableFrame(p, fg_color="transparent",
-                                                      height=260,
+                                                      height=240,
                                                       scrollbar_button_color=BORDER)
         self.landings_frame.pack(fill="x")
 
@@ -877,6 +905,7 @@ class TrackingScreen(ctk.CTkFrame):
                         {"name": "Registration", "value": meta.get("aircraft_registration") or "N/A","inline": True},
                         {"name": "Aircraft",     "value": meta.get("aircraft_type", "N/A"),          "inline": True},
                         {"name": "Simulator",    "value": meta.get("simulator", "N/A"),              "inline": True},
+                        {"name": "Route",        "value": meta.get("route") or "N/A",                "inline": True},
                         {"name": "Arrival ICAO", "value": arr_icao,                                  "inline": True},
                     ],
                     "footer": {"text": "csabolanta.hu"},
@@ -918,6 +947,7 @@ class TrackingScreen(ctk.CTkFrame):
         app_root = self.winfo_toplevel()
         UploadDialog(self, final, self.token, self.api_base,
                      self.cfg.get("reg", ""), self.cfg.get("ac_type", ""),
+                     self.cfg.get("route", ""),
                      on_done=lambda: app_root.after(0, app_root._show_setup))
 
 
@@ -926,13 +956,14 @@ class TrackingScreen(ctk.CTkFrame):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class UploadDialog(ctk.CTkToplevel):
-    def __init__(self, parent, filepath, token, api_base, reg, ac_type, on_done=None):
+    def __init__(self, parent, filepath, token, api_base, reg, ac_type, route="", on_done=None):
         super().__init__(parent)
         self.filepath = filepath
         self.token = token
         self.api_base = api_base
         self.reg = reg
         self.ac_type = ac_type
+        self.route = route
         self.on_done = on_done
 
         self.title("Upload Flight")
@@ -972,6 +1003,7 @@ class UploadDialog(ctk.CTkToplevel):
                     data = {}
                     if self.reg:     data["aircraft_registration"] = self.reg
                     if self.ac_type: data["aircraft_type"] = self.ac_type
+                    if self.route:   data["route"] = self.route
                     r = requests.post(
                         f"{self.api_base}/flights", files=files, data=data,
                         headers={"Authorization": f"Bearer {self.token}",
@@ -1145,6 +1177,7 @@ class RichPresenceManager:
 
     def stop(self):
         self._running = False
+
 # Global RPC instance — created once, shared across screens
 rpc = RichPresenceManager()
 
