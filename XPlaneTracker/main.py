@@ -81,6 +81,22 @@ YELLOW      = "#fbbf24"
 
 _airports_cache: list | None = None
 
+def get_airline_name(code: str) -> str:
+    if not code or code.lower() == "unknown":
+        return code
+    try:
+        r = requests.get(
+            "https://raw.githubusercontent.com/npow/airline-codes/master/airlines.json",
+            timeout=5,
+        )
+        if r.status_code == 200:
+            for airline in r.json():
+                if airline.get("iata") == code or airline.get("icao") == code:
+                    return airline.get("name", code)
+    except Exception:
+        pass
+    return code
+
 def get_nearest_airport_icao(lat: float, lon: float, max_dist_km: float = 10.0) -> str:
     import math
     global _airports_cache
@@ -490,7 +506,7 @@ class SetupScreen(ctk.CTkFrame):
                 self._sb_data = {
                     "callsign": callsign,
                     "full_flight_number": f"{airline_code}{flight_no}",
-                    "airline": airline_code,
+                    "airline": airline_code,   # raw code as fallback
                     "ac_type": ac.get("icaocode", ""),
                     "reg": ac.get("reg", ""),
                     "route": full_route,
@@ -504,7 +520,24 @@ class SetupScreen(ctk.CTkFrame):
                 ]:
                     self._entries[key].delete(0, "end")
                     self._entries[key].insert(0, val)
-                self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN)
+
+                # Fill airline with raw code immediately, then resolve in background
+                self._entries["airline"].delete(0, "end")
+                self._entries["airline"].insert(0, airline_code)
+
+                if airline_code:
+                    self.sb_status.configure(text="✔ SimBrief loaded, resolving airline…", text_color=GREEN)
+                    def resolve_airline():
+                        full_name = get_airline_name(airline_code)
+                        self._sb_data["airline"] = full_name
+                        self.after(0, lambda: (
+                            self._entries["airline"].delete(0, "end"),
+                            self._entries["airline"].insert(0, full_name),
+                            self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN),
+                        ))
+                    threading.Thread(target=resolve_airline, daemon=True).start()
+                else:
+                    self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN)
             else:
                 self.sb_status.configure(text="Flight plan not found.", text_color=RED)
         except Exception as e:
