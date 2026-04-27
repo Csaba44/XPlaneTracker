@@ -5,3 +5,8 @@ flights
 .env
 .simbrief_id
 log.txt
+build
+dist
+CSABOLANTA.spec
+*.spec
+*.exe
