@@ -80,6 +80,26 @@ GREEN       = "#4ade80"
 YELLOW      = "#fbbf24"
 
 _airports_cache: list | None = None
+def get_aircraft_name(icao_code: str) -> str:
+    if not icao_code or icao_code.strip().lower() in ("", "unknown"):
+        return icao_code
+
+    try:
+        import csv
+        r = requests.get(
+            "https://raw.githubusercontent.com/jpatokal/openflights/master/data/planes.dat",
+            timeout=8,
+        )
+        if r.status_code == 200:
+            reader = csv.reader(r.text.splitlines())
+            for row in reader:
+                if len(row) >= 3 and row[2].strip().upper() == icao_code.strip().upper():
+                    name = row[0].strip()
+                    return name if name else icao_code
+    except Exception as e:
+        logging.warning(f"get_aircraft_name failed for '{icao_code}': {e}")
+
+    return icao_code  # always fall back to raw ICAO code
 
 def get_airline_name(code: str) -> str:
     if not code or code.lower() == "unknown":
@@ -143,7 +163,7 @@ def get_nearest_airport_icao(lat: float, lon: float, max_dist_km: float = 10.0) 
     except Exception as e:
         logging.warning(f"Airport lookup failed: {e}")
         return "N/A"
-    
+
 # ── Providers (lazy import so missing deps don't crash GUI startup) ────────────
 def load_provider(sim_choice, host):
     if sim_choice == "X-Plane":
@@ -375,6 +395,7 @@ class SetupScreen(ctk.CTkFrame):
         self.user_name = user_name
         self.on_start = on_start
         self._sb_data = {}
+        self._sb_resolving = 0
         self._build()
 
     def _build(self):
@@ -488,77 +509,95 @@ class SetupScreen(ctk.CTkFrame):
             r = requests.get(url, timeout=10)
             if r.status_code == 200:
                 d = r.json()
-                gen = d.get("general", {})
-                ac  = d.get("aircraft", {})
-                atc = d.get("atc", {})
+                gen  = d.get("general", {})
+                ac   = d.get("aircraft", {})
+                atc  = d.get("atc", {})
                 orig = d.get("origin", {})
                 dest = d.get("destination", {})
+
                 airline_code = gen.get("icao_airline", "")
                 flight_no    = gen.get("flight_number", "")
                 callsign     = atc.get("callsign") or f"{airline_code}{flight_no}"
+                ac_type_raw  = ac.get("icaocode", "")
 
-                # Build full route string: ORIG route DEST
-                orig_icao = orig.get("icao_code", "")
-                dest_icao = dest.get("icao_code", "")
-                raw_route = gen.get("route", "")
+                orig_icao  = orig.get("icao_code", "")
+                dest_icao  = dest.get("icao_code", "")
+                raw_route  = gen.get("route", "")
                 full_route = " ".join(filter(None, [orig_icao, raw_route, dest_icao]))
 
+                # Store raw codes — ac_type_full added async below for RPC only
                 self._sb_data = {
-                    "callsign": callsign,
+                    "callsign":           callsign,
                     "full_flight_number": f"{airline_code}{flight_no}",
-                    "airline": airline_code,   # raw code as fallback
-                    "ac_type": ac.get("icaocode", ""),
-                    "reg": ac.get("reg", ""),
-                    "route": full_route,
-                    "dep": orig_icao,   # <-- add
-                    "arr": dest_icao,   # <-- add
+                    "airline":            airline_code,  # raw ICAO airline code
+                    "ac_type":            ac_type_raw,   # raw ICAO type code
+                    "ac_type_full":       "",            # full name for RPC, resolved async
+                    "reg":                ac.get("reg", ""),
+                    "route":              full_route,
+                    "dep":                orig_icao,
+                    "arr":                dest_icao,
                 }
+
+                # Fill all fields that don't need async resolution
                 for key, val in [
-                    ("callsign", callsign),
+                    ("callsign",  callsign),
                     ("flight_no", f"{airline_code}{flight_no}"),
-                    ("reg", ac.get("reg", "")),
-                    ("ac_type", ac.get("icaocode", "")),
-                    ("route", full_route),
+                    ("reg",       ac.get("reg", "")),
+                    ("route",     full_route),
                 ]:
                     self._entries[key].delete(0, "end")
                     self._entries[key].insert(0, val)
 
-                # Fill airline with raw code immediately, then resolve in background
+                # ac_type entry shows raw ICAO code (not the full name)
+                self._entries["ac_type"].delete(0, "end")
+                self._entries["ac_type"].insert(0, ac_type_raw)
+
+                # airline entry shows raw ICAO code, resolved to full name async
                 self._entries["airline"].delete(0, "end")
                 self._entries["airline"].insert(0, airline_code)
 
-                if airline_code:
-                    self.sb_status.configure(text="✔ SimBrief loaded, resolving airline…", text_color=GREEN)
-                    def resolve_airline():
-                        full_name = get_airline_name(airline_code)
-                        self._sb_data["airline"] = full_name
-                        self.after(0, lambda: (
-                            self._entries["airline"].delete(0, "end"),
-                            self._entries["airline"].insert(0, full_name),
-                            self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN),
-                        ))
-                    threading.Thread(target=resolve_airline, daemon=True).start()
-                else:
-                    self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN)
+                # Track pending async lookups
+                self._sb_resolving = 0
             else:
                 self.sb_status.configure(text="Flight plan not found.", text_color=RED)
         except Exception as e:
             self.sb_status.configure(text=f"Error: {e}", text_color=RED)
 
+    def _sb_resolve_done(self, field: str | None, value: str | None):
+        """Called on the main thread when an async SimBrief lookup finishes.
+        field/value are None for ac_type_full since we don't update the entry."""
+        if field is not None and value is not None:
+            self._entries[field].delete(0, "end")
+            self._entries[field].insert(0, value)
+        self._sb_resolving -= 1
+        if self._sb_resolving <= 0:
+            self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN)
+
     def _start(self):
+        # Always read from the entry — it's the source of truth regardless of
+        # whether SimBrief filled it or the user typed it manually.
+        ac_type_raw = self._entries["ac_type"].get().strip() or "unknown"
+
         cfg = {
-            "sim":       self.sim_var.get(),
-            "host":      self.host_entry.get().strip() or "127.0.0.1",
-            "callsign":  self._entries["callsign"].get().strip() or "unknown",
-            "flight_no": self._entries["flight_no"].get().strip() or "unknown",
-            "airline":   self._entries["airline"].get().strip() or "unknown",
-            "reg":       self._entries["reg"].get().strip(),
-            "ac_type":   self._entries["ac_type"].get().strip() or "unknown",
-            "route":     self._entries["route"].get().strip(),
-            "dep":       self._sb_data.get("dep", ""),   # <-- add
-            "arr":       self._sb_data.get("arr", ""),   # <-- add
+            "sim":          self.sim_var.get(),
+            "host":         self.host_entry.get().strip() or "127.0.0.1",
+            "callsign":     self._entries["callsign"].get().strip() or "unknown",
+            "flight_no":    self._entries["flight_no"].get().strip() or "unknown",
+            "airline":      self._entries["airline"].get().strip() or "unknown",
+            "reg":          self._entries["reg"].get().strip(),
+            "ac_type":      ac_type_raw,
+            "ac_type_full": "",
+            "route":        self._entries["route"].get().strip(),
+            "dep":          self._sb_data.get("dep", ""),
+            "arr":          self._sb_data.get("arr", ""),
         }
-        self.on_start(cfg)
+
+        def resolve_and_start():
+            cfg["ac_type_full"] = get_aircraft_name(ac_type_raw)
+            self.after(0, self.on_start, cfg)
+
+        threading.Thread(target=resolve_and_start, daemon=True).start()
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  SCREEN: TRACKING
@@ -578,7 +617,7 @@ class TrackingScreen(ctk.CTkFrame):
                 "flight_number":         cfg["flight_no"],
                 "airline":               cfg["airline"],
                 "aircraft_registration": cfg["reg"],
-                "aircraft_type":         cfg["ac_type"],
+                "aircraft_type":         cfg["ac_type"],   # raw ICAO code
                 "route":                 cfg.get("route", ""),
                 "simulator":             cfg["sim"],
                 "start_time":            datetime.now().isoformat(),
@@ -678,7 +717,7 @@ class TrackingScreen(ctk.CTkFrame):
         p = ctk.CTkFrame(parent, fg_color="transparent")
         p.pack(fill="both", expand=True, padx=14, pady=14)
 
-        # Flight badge
+        # Flight badge — shows raw ICAO ac_type code
         badge = ctk.CTkFrame(p, fg_color=CARD, corner_radius=8,
                               border_width=1, border_color=BORDER)
         badge.pack(fill="x", pady=(0, 14))
@@ -686,13 +725,11 @@ class TrackingScreen(ctk.CTkFrame):
                      font=("Georgia", 18, "bold"), text_color=WHITE).pack(pady=(10, 2))
         ctk.CTkLabel(badge, text=self.cfg["flight_no"],
                      font=("Consolas", 10), text_color=ACCENT).pack(pady=(0, 4))
-        ctk.CTkLabel(badge, text=self.cfg["ac_type"],
+        ctk.CTkLabel(badge, text=self.cfg["ac_type"],  # raw ICAO code
                      font=("Consolas", 10), text_color=MUTED).pack(pady=(0, 4))
 
-        # Show route in badge if available (truncated)
         route_str = self.cfg.get("route", "")
         if route_str:
-            # Show just origin → destination if long, else full
             parts = route_str.split()
             if len(parts) >= 2:
                 route_display = f"{parts[0]} → {parts[-1]}"
@@ -765,13 +802,14 @@ class TrackingScreen(ctk.CTkFrame):
                 self._provider.connect()
                 self._update_status("● Tracking", GREEN)
                 self._log(f"Connected to {self.cfg['sim']}")
+                # RPC: use ac_type_full (full name) if available, else fall back to raw ICAO
                 rpc.update(
                     callsign=self.cfg.get("callsign", ""),
-                    aircraft=self.cfg.get("ac_type", ""),
+                    aircraft=self.cfg.get("ac_type_full") or self.cfg.get("ac_type", ""),
                     registration=self.cfg.get("reg", ""),
-                    airline=self.cfg.get("airline", ""),   # <-- add
-                    dep=self.cfg.get("dep", ""),           # <-- add
-                    arr=self.cfg.get("arr", ""),           # <-- add
+                    airline=self.cfg.get("airline", ""),
+                    dep=self.cfg.get("dep", ""),
+                    arr=self.cfg.get("arr", ""),
                     state="Flying",
                 )
             except Exception as e:
@@ -793,11 +831,11 @@ class TrackingScreen(ctk.CTkFrame):
                         time.sleep(2)
                         continue
 
-                    lat  = data.get("lat")
-                    lon  = data.get("lon")
-                    alt  = data.get("alt")
+                    lat   = data.get("lat")
+                    lon   = data.get("lon")
+                    alt   = data.get("alt")
                     speed = data.get("gs")
-                    now  = time.time()
+                    now   = time.time()
 
                     # Autosave every 2 min
                     if now - self._last_autosave_time > 120:
@@ -939,13 +977,13 @@ class TrackingScreen(ctk.CTkFrame):
                     "description": "\n".join(lines),
                     "color": 0x38bdf8,
                     "fields": [
-                        {"name": "Callsign",     "value": meta.get("callsign", "N/A"),               "inline": True},
-                        {"name": "Flight No",    "value": meta.get("flight_number", "N/A"),          "inline": True},
-                        {"name": "Registration", "value": meta.get("aircraft_registration") or "N/A","inline": True},
-                        {"name": "Aircraft",     "value": meta.get("aircraft_type", "N/A"),          "inline": True},
-                        {"name": "Simulator",    "value": meta.get("simulator", "N/A"),              "inline": True},
-                        {"name": "Route",        "value": meta.get("route") or "N/A",                "inline": True},
-                        {"name": "Arrival ICAO", "value": arr_icao,                                  "inline": True},
+                        {"name": "Callsign",     "value": meta.get("callsign", "N/A"),                "inline": True},
+                        {"name": "Flight No",    "value": meta.get("flight_number", "N/A"),           "inline": True},
+                        {"name": "Registration", "value": meta.get("aircraft_registration") or "N/A", "inline": True},
+                        {"name": "Aircraft",     "value": meta.get("aircraft_type", "N/A"),           "inline": True},
+                        {"name": "Simulator",    "value": meta.get("simulator", "N/A"),               "inline": True},
+                        {"name": "Route",        "value": meta.get("route") or "N/A",                 "inline": True},
+                        {"name": "Arrival ICAO", "value": arr_icao,                                   "inline": True},
                     ],
                     "footer": {"text": "csabolanta.hu"},
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -962,7 +1000,7 @@ class TrackingScreen(ctk.CTkFrame):
 
     def _stop(self):
         self._tracking = False
-        rpc.clear()
+        rpc.set_idle()
         if self._provider:
             try:
                 self._provider.close()
@@ -982,7 +1020,6 @@ class TrackingScreen(ctk.CTkFrame):
 
         self._update_status("Uploading…", YELLOW)
 
-        # Find the App root to navigate back to setup after upload
         app_root = self.winfo_toplevel()
         UploadDialog(self, final, self.token, self.api_base,
                      self.cfg.get("reg", ""), self.cfg.get("ac_type", ""),
@@ -1001,7 +1038,7 @@ class UploadDialog(ctk.CTkToplevel):
         self.token = token
         self.api_base = api_base
         self.reg = reg
-        self.ac_type = ac_type
+        self.ac_type = ac_type  # raw ICAO code — sent to API
         self.route = route
         self.on_done = on_done
 
@@ -1009,10 +1046,10 @@ class UploadDialog(ctk.CTkToplevel):
         self.geometry("420x260")
         self.resizable(False, False)
         self.configure(fg_color=SIDEBAR)
-        
+
         self.after(100, self.grab_set)
-        self.after(150, self.lift)        
-        self.after(150, self.focus_force)  
+        self.after(150, self.lift)
+        self.after(150, self.focus_force)
 
         self._build()
         self._upload()
@@ -1091,18 +1128,21 @@ class UploadDialog(ctk.CTkToplevel):
             self.on_done()
 
 
-
 # ═════════════════════════════════════════════════════════════════════════════
 #  DISCORD RICH PRESENCE
 # ═════════════════════════════════════════════════════════════════════════════
 
-# Replace with your own Discord application client ID from
-# https://discord.com/developers/applications
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 
 class RichPresenceManager:
-    """Runs pypresence synchronously in its own thread with its own event loop.
-    Uses nest_asyncio to prevent 'event loop already running' conflicts."""
+    """Runs pypresence in its own thread.
+    
+    Discord display:
+      details : "WZZ1234  |  LHBP → EGLL"
+      state   : "Wizz Air · Boeing 777-200ER · HA-LWS"
+    
+    ac_type_full (full aircraft name) is used here — raw ICAO code everywhere else.
+    """
 
     def __init__(self):
         self._rpc = None
@@ -1121,7 +1161,6 @@ class RichPresenceManager:
 
     @staticmethod
     def _call(fn, *args, **kwargs):
-        """Call fn(*args, **kwargs) whether it's sync or async."""
         import asyncio, inspect
         result = fn(*args, **kwargs)
         if inspect.isawaitable(result):
@@ -1133,10 +1172,9 @@ class RichPresenceManager:
         return result
 
     def _worker(self):
-        print(f"[RPC] worker started, client_id={DISCORD_CLIENT_ID}")
+        print(f"[RPC] worker started")
 
         while self._running:
-            # ── Connect ───────────────────────────────────────────────────
             if not self._connected:
                 try:
                     self._rpc = DiscordPresence(DISCORD_CLIENT_ID)
@@ -1144,15 +1182,8 @@ class RichPresenceManager:
                     self._connected = True
                     print("[RPC] connected to Discord!")
                     logging.info("Discord RPC connected.")
-                    # Set idle presence immediately so Discord registers the app
                     try:
-                        self._call(self._rpc.update,
-                                   details="Repülőzzünk, shavale! 🍀",
-                                   state="Waiting for flight…",
-                                   large_image="csabolanta",
-                                   large_text="CSABOLANTA Flight Tracker",
-                                   instance=False)
-                        print("[RPC] idle presence set")
+                        rpc.set_idle();
                     except Exception as ie:
                         print(f"[RPC] idle presence failed: {ie}")
                 except Exception as e:
@@ -1163,7 +1194,6 @@ class RichPresenceManager:
                     time.sleep(15)
                     continue
 
-            # ── Send pending update ───────────────────────────────────────
             with self._lock:
                 kwargs = self._pending_update
                 self._pending_update = None
@@ -1175,7 +1205,7 @@ class RichPresenceManager:
                         print("[RPC] presence cleared")
                     else:
                         self._call(self._rpc.update, **kwargs)
-                        print(f"[RPC] presence updated OK: {kwargs.get('details')} / {kwargs.get('state')}")
+                        print(f"[RPC] presence updated: {kwargs.get('details')} / {kwargs.get('state')}")
                 except Exception as e:
                     print(f"[RPC] update/clear failed: {e}")
                     logging.warning(f"Discord RPC update failed: {e}")
@@ -1185,7 +1215,6 @@ class RichPresenceManager:
 
             time.sleep(0.5)
 
-        # Cleanup
         try:
             if self._rpc and self._connected:
                 self._call(self._rpc.close)
@@ -1193,14 +1222,24 @@ class RichPresenceManager:
             pass
 
     def update(self, callsign="", aircraft="", registration="", airline="", dep="", arr="", state="Flying"):
+        """
+        aircraft  — pass cfg["ac_type_full"] if available, else cfg["ac_type"]
+                    (full name shown in Discord, ICAO code used as fallback)
+        airline   — full airline name (already resolved before this is called)
+        dep/arr   — ICAO airport codes from SimBrief
+        """
         if not _PYPRESENCE_AVAILABLE:
             return
-        
-        # Details line: "WZZ1234  |  LHBP → EGLL" or just callsign
-        route_part = f"  |  {dep} → {arr}" if dep and arr else ""
-        details = f"{callsign}{route_part}" if callsign and callsign != "unknown" else f"In flight{route_part}"
 
-        # State line: "Wizz Air  ·  A320  ·  HA-LWS" or fewer parts
+        # Details line: "WZZ1234  |  LHBP → EGLL"
+        route_part = f"  |  {dep} → {arr}" if dep and arr else ""
+        details = (
+            f"{callsign}{route_part}"
+            if callsign and callsign != "unknown"
+            else f"In flight{route_part}"
+        )
+
+        # State line: "Wizz Air · Boeing 777-200ER · HA-LWS"
         parts = [p for p in [airline, aircraft, registration] if p and p != "unknown"]
         state_str = " · ".join(parts) if parts else "CSABOLANTA"
 
@@ -1214,20 +1253,29 @@ class RichPresenceManager:
                 instance=False,
             )
 
+    def set_idle(self):
+        """Return to idle presence (called after a flight ends)."""
+        with self._lock:
+            self._pending_update = dict(
+                details="Repülőzzünk, shavale! 🍀",
+                state="Waiting for flight…",
+                large_image="csabolanta",
+                large_text="CSABOLANTA Flight Tracker",
+                instance=False,
+            )
+
     def clear(self):
+        """Fully clear presence (called on app exit or disconnect)."""
         with self._lock:
-            self._pending_update = None
-        if not _PYPRESENCE_AVAILABLE or not self._connected or not self._rpc:
-            return
-        # Schedule a clear on next worker tick via sentinel
-        with self._lock:
-            self._pending_update = {}  # empty dict = clear signal
+            self._pending_update = {}  # sentinel → rpc.clear() on next worker tick
 
     def stop(self):
         self._running = False
 
+
 # Global RPC instance — created once, shared across screens
 rpc = RichPresenceManager()
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  APP ROOT
@@ -1248,7 +1296,6 @@ class App(ctk.CTk):
 
         rpc.start()
 
-        # Try to silently auth with saved token before showing login screen
         saved_token = ""
         if os.path.exists(".xtracker_token"):
             with open(".xtracker_token") as f:
@@ -1292,7 +1339,6 @@ class App(ctk.CTk):
                 return
         except Exception:
             pass
-        # Token invalid or network error — fall through to login
         self.after(0, self._show_login)
 
     def _clear(self):
