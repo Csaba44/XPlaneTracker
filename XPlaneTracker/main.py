@@ -510,6 +510,8 @@ class SetupScreen(ctk.CTkFrame):
                     "ac_type": ac.get("icaocode", ""),
                     "reg": ac.get("reg", ""),
                     "route": full_route,
+                    "dep": orig_icao,   # <-- add
+                    "arr": dest_icao,   # <-- add
                 }
                 for key, val in [
                     ("callsign", callsign),
@@ -553,9 +555,10 @@ class SetupScreen(ctk.CTkFrame):
             "reg":       self._entries["reg"].get().strip(),
             "ac_type":   self._entries["ac_type"].get().strip() or "unknown",
             "route":     self._entries["route"].get().strip(),
+            "dep":       self._sb_data.get("dep", ""),   # <-- add
+            "arr":       self._sb_data.get("arr", ""),   # <-- add
         }
         self.on_start(cfg)
-
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  SCREEN: TRACKING
@@ -766,6 +769,9 @@ class TrackingScreen(ctk.CTkFrame):
                     callsign=self.cfg.get("callsign", ""),
                     aircraft=self.cfg.get("ac_type", ""),
                     registration=self.cfg.get("reg", ""),
+                    airline=self.cfg.get("airline", ""),   # <-- add
+                    dep=self.cfg.get("dep", ""),           # <-- add
+                    arr=self.cfg.get("arr", ""),           # <-- add
                     state="Flying",
                 )
             except Exception as e:
@@ -1186,16 +1192,22 @@ class RichPresenceManager:
         except Exception:
             pass
 
-    def update(self, callsign="", aircraft="", registration="", state="Flying"):
+    def update(self, callsign="", aircraft="", registration="", airline="", dep="", arr="", state="Flying"):
         if not _PYPRESENCE_AVAILABLE:
             return
-        details = callsign if callsign and callsign != "unknown" else "In flight"
-        parts = [p for p in [aircraft, registration] if p and p != "unknown"]
-        ac_str = " · ".join(parts)
+        
+        # Details line: "WZZ1234  |  LHBP → EGLL" or just callsign
+        route_part = f"  |  {dep} → {arr}" if dep and arr else ""
+        details = f"{callsign}{route_part}" if callsign and callsign != "unknown" else f"In flight{route_part}"
+
+        # State line: "Wizz Air  ·  A320  ·  HA-LWS" or fewer parts
+        parts = [p for p in [airline, aircraft, registration] if p and p != "unknown"]
+        state_str = " · ".join(parts) if parts else "CSABOLANTA"
+
         with self._lock:
             self._pending_update = dict(
                 details=details,
-                state=ac_str if ac_str else "CSABOLANTA",
+                state=state_str,
                 large_image="csabolanta",
                 large_text="CSABOLANTA Flight Tracker",
                 start=int(time.time()),
