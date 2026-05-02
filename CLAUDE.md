@@ -59,6 +59,7 @@ The web application leverages a `Makefile` to streamline Docker orchestration.
 - **Frontend Conventions:**
   - Strictly adhere to the Vue 3 Composition API using `<script setup>`.
   - Maintain the current separation of concerns: use composables for complex logic and mathematics outside of the UI components.
+  - Whenever you are asked to create or modify a Vue component, you **MUST** read the .claude/skills/design file first. Strictly apply the Tailwind classes, color variables, and typography rules defined there.
 
 * **Python Conventions:**
   - Assume execution from within the `.venv`. Do not modify the `CSABOLANTA.spec` file unless adding new explicit data dependencies or hidden imports.
