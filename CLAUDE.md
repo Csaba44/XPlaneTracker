@@ -70,6 +70,20 @@ The web application leverages a `Makefile` to streamline Docker orchestration.
   - The existing application UI uses a highly specific, informal Hungarian slang (e.g., "muro phral", "Szia testvér!", "Jo hulye vagy"). **Leave all existing Hungarian text exactly as it is.**
   - When generating **new** user-facing text, notifications, or error messages, **you must write them in English** unless explicitly instructed otherwise. Do not attempt to write new text in Hungarian slang. I will manually translate your English placeholders into the appropriate style later.
 
+## Flight Telemetry Data Schema
+
+You can find an example of the flight data structure located at: `.claude/example-flight/flight_UAE76J_20260502_083528.json`
+
+**Note:** In the actual application, these flight logs are always compressed and stored as `.json.gz` files. The provided example is uncompressed and has its telemetry data points severely truncated for ease of use and readability.
+
+The JSON schema consists of three main sections:
+
+- **`metadata`**: An object containing the flight's core details (`callsign`, `flight_number`, `airline`, `aircraft_registration`, `aircraft_type`, `route`, `simulator`, and `start_time`). It also includes a `columns` array that strictly defines the order of the telemetry values in the `path` section.
+- **`path`**: A large array of arrays. Each inner array represents a single telemetry snapshot in time, mapped directly to the `columns` definition (e.g., `[timestamp, lat, lon, alt, speed]`).
+- **`landings`**: An array of objects tracking touchdown events. Each object contains the `timestamp`, vertical speed (`fpm`), `g_force`, `lat`, and `lon` at the moment of touchdown.
+
+**Maintenance Rule for Claude:** Whenever you implement new data points, alter the telemetry schema, or add new core features to the application, you **MUST** update this `CLAUDE.md` document to ensure the project context remains perfectly fresh and accurate for future sessions.
+
 # Further AI instructions
 
 Populate and maintain CLAUDE.md with all relevant project-wide context so you can resume work efficiently without me repeating context each session. Include:

@@ -1,0 +1,51 @@
+{
+  "metadata": {
+    "callsign": "UAE76J",
+    "flight_number": "EK111",
+    "airline": "Emirates",
+    "aircraft_registration": "A6-EBK",
+    "aircraft_type": "B77W",
+    "route": "OMDB ANVI7F ANVIX DCT GIDIS G783 VAVIM DCT ESROM M318 GOLGU M550 RIBOT DCT MIGMA DCT SITUK M321 KSA T503 OVANO L768 FIRAS R655 LEBOR UR655 BALMA L620 MUT UL619 OSVEL UL620 KFK UM855 SISPI UT615 SULTA UW714 YAA UA16 IST UL610 FENER UT264 TUDBU Q26 UPAMA DCT PEMOK DCT NEKUL DCT GOXGE DCT KEZAL KEZA2H LHBP",
+    "simulator": "MSFS 2024",
+    "start_time": "2026-05-02T08:35:28.551632",
+    "columns": [
+      "timestamp",
+      "lat",
+      "lon",
+      "alt",
+      "speed"
+    ]
+  },
+  "path": [
+    [
+      1777703729.19,
+      25.24281,
+      55.37103,
+      25,
+      0
+    ],
+    [
+      1777703729.48,
+      25.24281,
+      55.37103,
+      25,
+      0
+    ],
+    [
+      1777703729.82,
+      25.24281,
+      55.37103,
+      25,
+      0
+    ]
+  ],
+  "landings": [
+    {
+      "timestamp": 1777727330.15,
+      "fpm": -175.27,
+      "g_force": 1.05,
+      "lat": 47.42735,
+      "lon": 19.28663
+    }
+  ]
+}
