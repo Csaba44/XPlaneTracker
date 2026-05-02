@@ -6,11 +6,11 @@ Csabolanta (XPlaneTracker) is a full-stack flight tracking platform for X-Plane 
 
 The project is divided into distinct domains:
 
-- `/XPlaneTracker/`: The Python-based desktop client application (GUI, telemetry extraction).
-- `/XPlaneTrackerAPI/`: The Laravel PHP backend.
-- `/XPlaneTrackerFrontend/`: The Vue 3 SPA frontend.
-- `/docker/`: Nginx and PHP configuration files for development and production.
-- `/jetphotos-worker/`: **[IGNORE]** Do not inspect or modify this directory unless explicitly instructed to do so.
+- `@/XPlaneTracker/`: The Python-based desktop client application (GUI, telemetry extraction).
+- `@/XPlaneTrackerAPI/`: The Laravel PHP backend.
+- `@/XPlaneTrackerFrontend/`: The Vue 3 SPA frontend.
+- `@/docker/`: Nginx and PHP configuration files for development and production.
+- `@/jetphotos-worker/`: **[IGNORE]** Do not inspect or modify this directory unless explicitly instructed to do so.
 
 ## Tech Stack
 
