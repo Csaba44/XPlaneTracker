@@ -39,4 +39,8 @@ return [
         'worker_url' => env('JETPHOTOS_WORKER_URL', 'http://jetphotos-worker:8787'),
     ],
 
+    'airportdb' => [
+        'token' => env('AIRPORTDB_API_TOKEN'),
+    ],
+
 ];

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AdminUserController;
+use App\Http\Controllers\AirportDataController;
 use App\Http\Controllers\AirportFeaturesController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -14,6 +15,8 @@ use App\Http\Controllers\RunwayController;
 Route::post('/login', [AuthController::class, 'login']);
 
 Route::get('/runways', [RunwayController::class, 'getRunways']);
+
+Route::get('/airport/{icao}/runways', [AirportDataController::class, 'getAirportRunways']);
 
 Route::middleware('auth:sanctum')->group(function () {
 
