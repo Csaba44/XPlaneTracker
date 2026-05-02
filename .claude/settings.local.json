@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs -I {} bash -c 'zcat {} | head -c 2000')",
+      "Bash(zcat /home/csaba/projects/XPlaneTracker/XPlaneTracker/flights/flight_unknown_20260413_235328.json.gz)",
+      "Bash(python3 -c \"import sys, json; data = json.load\\(sys.stdin\\); print\\(json.dumps\\({k: \\(type\\(v\\).__name__, len\\(v\\) if isinstance\\(v, list\\) else '...'\\) for k, v in data.items\\(\\)}, indent=2\\)\\)\")"
+    ]
+  }
+}

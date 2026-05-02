@@ -1,3 +1,7 @@
 .env
 .env.dev
 .env.prod
+tmp
+
+# Terminal Paste Image folder
+.cp-images/
