@@ -15,6 +15,7 @@ import { distanceM, toleranceForGS, rdpAdaptive, nearestPointOnPolyline } from "
 import { getAirportCoords } from "../composables/useAirports";
 import { fetchAndDrawRunways, pendingRequests } from "../composables/useRunways";
 import { fetchAndDrawAirportFeatures } from "../composables/useAirportFeatures";
+import FlightAnalysisPanel from "./FlightAnalysisPanel.vue";
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, TitleComponent]);
 
@@ -44,6 +45,7 @@ const getStorage = (key, defaultVal) => {
 const mapContainer = ref(null);
 const isChartVisible = ref(false);
 const showConnections = ref(false);
+const isAnalysisVisible = ref(false);
 const chartRef = ref(null);
 
 // Layers state synced with localStorage
@@ -584,7 +586,14 @@ onMounted(() => {
         <span class="font-bold text-xs uppercase tracking-widest">Kapcsolatok</span>
         <span v-if="showConnections" class="ml-1 w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse"></span>
       </button>
+
+      <button @click="isAnalysisVisible = true" class="bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group">
+        <i class="fa-solid fa-chart-column text-cyan-400 group-hover:scale-110 transition-transform"></i>
+        <span class="font-bold text-xs uppercase tracking-widest">Analysis</span>
+      </button>
     </div>
+
+    <FlightAnalysisPanel v-if="isAnalysisVisible" :flightData="flightData" @close="isAnalysisVisible = false" />
 
     <div v-if="isChartVisible" class="absolute bottom-30 left-6 z-[1000] w-[90vw] max-w-2xl h-64 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md p-4">
       <div class="flex justify-between items-center mb-2 px-2">

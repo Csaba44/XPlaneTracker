@@ -1,0 +1,234 @@
+import { ref, watch } from 'vue'
+import api from '../config/api'
+import { bearing, distanceM, angleDiff } from './useGeo'
+import { getAirportCoords } from './useAirports'
+
+const BOUNCE_THRESHOLD_FT = 500
+const APPROACH_ANGLE_DEG = 10
+const APPROACH_MAX_NM = 20
+const RUNWAY_MATCH_DEG = 30
+const NM_TO_M = 1852
+const FT_PER_NM = 6076.12
+const M_TO_FT = 3.28084
+
+function getAltAtTimestamp(timestamp, path) {
+  let best = null, minDiff = Infinity
+  for (const p of path) {
+    const d = Math.abs(p[0] - timestamp)
+    if (d < minDiff) { minDiff = d; best = p }
+  }
+  return best ? best[3] : 0
+}
+
+function filterBounces(sortedLandings, path) {
+  if (sortedLandings.length <= 1) return sortedLandings
+  const valid = [sortedLandings[0]]
+  for (let i = 1; i < sortedLandings.length; i++) {
+    const prev = sortedLandings[i - 1]
+    const curr = sortedLandings[i]
+    const between = path.filter(p => p[0] > prev.timestamp && p[0] < curr.timestamp)
+    const prevAlt = getAltAtTimestamp(prev.timestamp, path)
+    const maxAlt = between.length ? Math.max(...between.map(p => p[3])) : prevAlt
+    if (maxAlt - prevAlt >= BOUNCE_THRESHOLD_FT) valid.push(curr)
+  }
+  return valid
+}
+
+async function findAirportIcao(landing, metadata) {
+  const tokens = (metadata?.route || '').trim().split(/\s+/)
+  const icaos = tokens.filter(t => /^[A-Z]{4}$/.test(t))
+  if (!icaos.length) return null
+  let bestIcao = null, bestDist = Infinity
+  for (const icao of icaos) {
+    try {
+      const coords = await getAirportCoords(icao)
+      if (!coords) continue
+      const d = distanceM(landing.lat, landing.lon, coords[0], coords[1])
+      if (d < bestDist) { bestDist = d; bestIcao = icao }
+    } catch { /* skip */ }
+  }
+  return bestDist < 20000 ? bestIcao : null
+}
+
+function buildCandidates(runways) {
+  const cands = []
+  for (const rwy of runways) {
+    if (rwy.le_latitude_deg && rwy.le_longitude_deg && rwy.le_heading_degM != null) {
+      cands.push({
+        ident: rwy.le_ident,
+        thresholdLat: parseFloat(rwy.le_latitude_deg),
+        thresholdLon: parseFloat(rwy.le_longitude_deg),
+        elevationFt: parseFloat(rwy.le_elevation_ft) || 0,
+        approachHeading: parseFloat(rwy.le_heading_degM),
+      })
+    }
+    if (rwy.he_latitude_deg && rwy.he_longitude_deg && rwy.he_heading_degM != null) {
+      cands.push({
+        ident: rwy.he_ident,
+        thresholdLat: parseFloat(rwy.he_latitude_deg),
+        thresholdLon: parseFloat(rwy.he_longitude_deg),
+        elevationFt: parseFloat(rwy.he_elevation_ft) || 0,
+        approachHeading: parseFloat(rwy.he_heading_degM),
+      })
+    }
+  }
+  return cands
+}
+
+function findLandingPathIndex(landing, path) {
+  return path.reduce((best, p, i) => {
+    const d = Math.abs(p[0] - landing.timestamp)
+    return d < best.d ? { i, d } : best
+  }, { i: 0, d: Infinity }).i
+}
+
+function identifyRunway(landing, path, candidates) {
+  const landingIdx = findLandingPathIndex(landing, path)
+  const start = Math.max(0, landingIdx - 20)
+  const sample = path.slice(start, landingIdx + 1)
+  if (sample.length < 2) return null
+  const first = sample[0]
+  const meanBrg = bearing(first[1], first[2], landing.lat, landing.lon)
+  let best = null, bestDiff = Infinity
+  for (const cand of candidates) {
+    const diff = angleDiff(meanBrg, cand.approachHeading)
+    if (diff < bestDiff) { bestDiff = diff; best = cand }
+  }
+  return bestDiff <= RUNWAY_MATCH_DEG ? best : null
+}
+
+function computeApproachSegment(landing, path, runway) {
+  const landingIdx = findLandingPathIndex(landing, path)
+  let startIdx = landingIdx
+
+  for (let i = landingIdx - 1; i >= 0; i--) {
+    const p = path[i]
+    const distNm = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2]) / NM_TO_M
+    if (distNm > APPROACH_MAX_NM) break
+    startIdx = i
+  }
+
+  for (let i = startIdx; i < landingIdx; i++) {
+    const p = path[i]
+    const brgToThr = bearing(p[1], p[2], runway.thresholdLat, runway.thresholdLon)
+    if (angleDiff(brgToThr, runway.approachHeading) <= APPROACH_ANGLE_DEG) {
+      startIdx = i
+      break
+    }
+  }
+
+  return path.slice(startIdx, landingIdx + 1)
+}
+
+function computeLateralPoints(segment, runway) {
+  const reverseHdg = (runway.approachHeading + 180) % 360
+  return segment.map(p => {
+    const brgFromThr = bearing(runway.thresholdLat, runway.thresholdLon, p[1], p[2])
+    const distM_val = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2])
+    const nmToThr = distM_val / NM_TO_M
+    const relAngle = (brgFromThr - reverseHdg + 360) % 360
+    const deviationFt = distM_val * Math.sin(relAngle * Math.PI / 180) * M_TO_FT
+    return [parseFloat(deviationFt.toFixed(1)), parseFloat(nmToThr.toFixed(3))]
+  })
+}
+
+function buildGsRefLines(maxNm, elevFt) {
+  const gsRef = [], gsPlus = [], gsMinus = []
+  for (let d = 0; d <= maxNm + 0.05; d = parseFloat((d + 0.1).toFixed(1))) {
+    gsRef.push([d, elevFt + d * FT_PER_NM * Math.tan(3 * Math.PI / 180)])
+    gsPlus.push([d, elevFt + d * FT_PER_NM * Math.tan(3.35 * Math.PI / 180)])
+    gsMinus.push([d, elevFt + d * FT_PER_NM * Math.tan(2.65 * Math.PI / 180)])
+  }
+  return { gsRef, gsPlus, gsMinus }
+}
+
+function buildFunnelLines(maxNm) {
+  const left = [], right = []
+  const funnelPerNm = FT_PER_NM * Math.tan(2.5 * Math.PI / 180)
+  for (let d = 0; d <= maxNm + 0.05; d = parseFloat((d + 0.1).toFixed(1))) {
+    left.push([-parseFloat((d * funnelPerNm).toFixed(1)), d])
+    right.push([parseFloat((d * funnelPerNm).toFixed(1)), d])
+  }
+  return { left, right }
+}
+
+async function processLanding(landing, data) {
+  const icao = await findAirportIcao(landing, data.metadata)
+  if (!icao) return { error: 'Airport not identified', runwayLabel: 'Unknown' }
+
+  let airportData
+  try {
+    const res = await api.get(`/api/airport/${icao}/runways`)
+    airportData = res.data
+  } catch {
+    return { error: `Failed to fetch data for ${icao}`, runwayLabel: icao }
+  }
+
+  const candidates = buildCandidates(airportData.runways || [])
+  if (!candidates.length) return { error: `No runway data for ${icao}`, runwayLabel: icao }
+
+  const runway = identifyRunway(landing, data.path, candidates)
+  if (!runway) return { error: 'Could not identify landing runway', runwayLabel: icao }
+
+  const segment = computeApproachSegment(landing, data.path, runway)
+  if (segment.length < 2) return { error: 'Approach segment too short', runwayLabel: `${icao} / RWY ${runway.ident}` }
+
+  const lateralPoints = computeLateralPoints(segment, runway)
+  const approachMaxNm = Math.max(Math.ceil(Math.max(...lateralPoints.map(p => p[1])) * 10) / 10, 8)
+
+  const { gsRef, gsPlus, gsMinus } = buildGsRefLines(approachMaxNm, runway.elevationFt)
+  const { left, right } = buildFunnelLines(approachMaxNm)
+
+  const verticalAlt = segment.map(p => {
+    const nm = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2]) / NM_TO_M
+    return [parseFloat(nm.toFixed(3)), p[3]]
+  })
+  const verticalGs = segment.map(p => {
+    const nm = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2]) / NM_TO_M
+    return [parseFloat(nm.toFixed(3)), p[4] || 0]
+  })
+
+  return {
+    runwayLabel: `${icao} / RWY ${runway.ident}`,
+    lateralPoints,
+    verticalAlt,
+    verticalGs,
+    gsRefLine: gsRef,
+    gsPlusDot: gsPlus,
+    gsMinusDot: gsMinus,
+    locFunnelLeft: left,
+    locFunnelRight: right,
+    approachMaxNm,
+    error: null,
+  }
+}
+
+export function useApproachAnalysis(flightDataRef) {
+  const approachRows = ref([])
+  const isLoading = ref(false)
+  const globalError = ref(null)
+
+  const process = async (data) => {
+    if (!data?.path?.length || !data?.landings?.length) {
+      approachRows.value = []
+      isLoading.value = false
+      return
+    }
+    isLoading.value = true
+    globalError.value = null
+    try {
+      const sorted = [...data.landings].sort((a, b) => a.timestamp - b.timestamp)
+      const validLandings = filterBounces(sorted, data.path)
+      const rows = await Promise.all(validLandings.map(l => processLanding(l, data)))
+      approachRows.value = rows
+    } catch (e) {
+      globalError.value = e.message
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  watch(flightDataRef, (val) => process(val), { immediate: true, deep: false })
+
+  return { approachRows, isLoading, globalError }
+}
