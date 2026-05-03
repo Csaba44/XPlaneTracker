@@ -84,6 +84,12 @@ The JSON schema consists of three main sections:
 
 **Maintenance Rule for Claude:** Whenever you implement new data points, alter the telemetry schema, or add new core features to the application, you **MUST** update this `CLAUDE.md` document to ensure the project context remains perfectly fresh and accurate for future sessions.
 
+## Core Directive: Write Plans to Files
+
+Whenever the user asks you to create a plan, design a feature, or outline steps for a task, **do not just output the plan in the terminal or chat interface**.
+
+Instead, you must write the plan to a Markdown file within the `@docs/plans` folder. This allows the user to read, review, and track progress without having to scroll through terminal logs, and creates a permanent history of project plans.
+
 # Further AI instructions
 
 Populate and maintain CLAUDE.md with all relevant project-wide context so you can resume work efficiently without me repeating context each session. Include:
