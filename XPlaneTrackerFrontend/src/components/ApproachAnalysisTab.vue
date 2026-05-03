@@ -77,10 +77,14 @@ const getLateralOptions = (row) => ({
       lineStyle: { color: '#475569', type: 'dashed', width: 1 },
     },
     formatter: (params) => {
-      const d = params.find(p => p.seriesName === 'Aircraft Path')?.data
-      if (!d) return ''
-      const side = d[0] >= 0 ? 'Right' : 'Left'
-      return `Dev: ${Math.abs(d[0]).toFixed(0)}ft ${side}<br/>Dist: ${d[1].toFixed(1)} NM`
+      const yVal = params?.[0]?.axisValue
+      if (yVal == null || !row.lateralPoints?.length) return ''
+      let point = row.lateralPoints[0]
+      for (const p of row.lateralPoints) {
+        if (Math.abs(p[1] - yVal) < Math.abs(point[1] - yVal)) point = p
+      }
+      const side = point[0] >= 0 ? 'Right' : 'Left'
+      return `Dev: ${Math.abs(point[0]).toFixed(0)}ft ${side}<br/>Dist: ${point[1].toFixed(1)} NM`
     },
   },
   series: [
@@ -177,12 +181,19 @@ const getVerticalOptions = (row) => {
     tooltip: {
       ...TOOLTIP_BASE,
       formatter: (params) => {
-        const alt = params.find(p => p.seriesName === 'Altitude (ft)')?.data
-        const gs = params.find(p => p.seriesName === 'Groundspeed (kts)')?.data
-        const nm = alt ? alt[0].toFixed(1) : '—'
-        const dev = alt?.[2]
-        const devStr = dev !== undefined ? `${Math.abs(dev).toFixed(0)}ft ${dev >= 0 ? 'R' : 'L'}` : '—'
-        return `Dist: ${nm} NM<br/>Alt: ${alt ? alt[1] : '—'} ft<br/>GS: ${gs ? gs[1] : '—'} kts<br/>Dev: ${devStr}`
+        const xVal = params?.[0]?.axisValue
+        if (xVal == null || !row.verticalAlt?.length) return ''
+        let altPoint = row.verticalAlt[0]
+        for (const p of row.verticalAlt) {
+          if (Math.abs(p[0] - xVal) < Math.abs(altPoint[0] - xVal)) altPoint = p
+        }
+        let gsPoint = row.verticalGs[0]
+        for (const p of row.verticalGs) {
+          if (Math.abs(p[0] - xVal) < Math.abs(gsPoint[0] - xVal)) gsPoint = p
+        }
+        const dev = altPoint[2] ?? 0
+        const devStr = dev >= 0 ? `+${dev}ft` : `${dev}ft`
+        return `Dist: ${altPoint[0].toFixed(1)} NM<br/>Alt: ${altPoint[1]} ft<br/>GS: ${gsPoint[1]} kts<br/>Dev: ${devStr}`
       },
     },
     series: [

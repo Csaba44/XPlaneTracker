@@ -153,7 +153,14 @@ function computeApproachSegment(landing, path, runway) {
     startIdx = i
   }
 
-  return path.slice(startIdx, landingIdx + 1)
+  const raw = path.slice(startIdx, landingIdx + 1)
+
+  let minNm = Infinity, minIdx = raw.length - 1
+  for (let i = 0; i < raw.length; i++) {
+    const d = distanceM(runway.thresholdLat, runway.thresholdLon, raw[i][1], raw[i][2])
+    if (d < minNm) { minNm = d; minIdx = i }
+  }
+  return raw.slice(0, minIdx + 1)
 }
 
 function computeLateralPoints(segment, runway) {
@@ -215,10 +222,12 @@ async function processLanding(landing, data) {
   const { gsRef, gsPlus, gsMinus } = buildGsRefLines(approachMaxNm, runway.elevationFt)
   const { left, right } = buildFunnelLines(approachMaxNm)
 
-  const verticalAlt = segment.map((p, idx) => {
+  const tan3 = Math.tan(3 * Math.PI / 180)
+  const verticalAlt = segment.map(p => {
     const nm = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2]) / NM_TO_M
-    const dev = lateralPoints[idx] ? lateralPoints[idx][0] : 0
-    return [parseFloat(nm.toFixed(3)), p[3], parseFloat(dev.toFixed(1))]
+    const glideslopeAlt = runway.elevationFt + nm * FT_PER_NM * tan3
+    const verticalDev = p[3] - glideslopeAlt
+    return [parseFloat(nm.toFixed(3)), p[3], Math.round(verticalDev)]
   })
   const verticalGs = segment.map(p => {
     const nm = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2]) / NM_TO_M
@@ -227,6 +236,7 @@ async function processLanding(landing, data) {
 
   return {
     runwayLabel: `${icao} / RWY ${runway.ident}`,
+    thresholdElevFt: runway.elevationFt,
     lateralPoints,
     verticalAlt,
     verticalGs,
