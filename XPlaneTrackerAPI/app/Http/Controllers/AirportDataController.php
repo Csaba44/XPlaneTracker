@@ -30,12 +30,11 @@ class AirportDataController extends Controller
 
         if (isset($data['runways'])) {
             foreach ($data['runways'] as &$rwy) {
-                $rwy['length_m'] = isset($rwy['length_ft']) ? round($rwy['length_ft'] * 0.3048, 2) : null;
-                $rwy['width_m'] = isset($rwy['width_ft']) ? round($rwy['width_ft'] * 0.3048, 2) : null;
+                $rwy['length_m'] = is_numeric($rwy['length_ft'] ?? null) ? round((float) $rwy['length_ft'] * 0.3048, 2) : null;
+                $rwy['width_m'] = is_numeric($rwy['width_ft'] ?? null) ? round((float) $rwy['width_ft'] * 0.3048, 2) : null;
 
-                $rwy['le_elevation_m'] = isset($rwy['le_elevation_ft']) ? round($rwy['le_elevation_ft'] * 0.3048, 2) : null;
-                $rwy['he_elevation_m'] = isset($rwy['he_elevation_ft']) ? round($rwy['he_elevation_ft'] * 0.3048, 2) : null;
-
+                $rwy['le_elevation_m'] = is_numeric($rwy['le_elevation_ft'] ?? null) ? round((float) $rwy['le_elevation_ft'] * 0.3048, 2) : null;
+                $rwy['he_elevation_m'] = is_numeric($rwy['he_elevation_ft'] ?? null) ? round((float) $rwy['he_elevation_ft'] * 0.3048, 2) : null;
             }
         }
 

@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 import api from '../config/api'
-import { bearing, distanceM, angleDiff } from './useGeo'
+import { bearing, distanceM, angleDiff, destination } from './useGeo'
 import { loadAirportsJson } from './useAirports'
 
 const BOUNCE_THRESHOLD_FT = 500
@@ -12,6 +12,16 @@ const LOC_DOT_DEG = 1.25
 const NM_TO_M = 1852
 const FT_PER_NM = 6076.12
 const M_TO_FT = 3.28084
+const SEG_MIN_DIST_M = 5
+const TRACK_WINDOW_M = 100
+const TRACK_WINDOW_MIN_SAMPLES = 3
+const OUT_OF_CONE_TOLERANCE = 3
+const COURSE_REFINE_MAX_OFFSET_DEG = 1.5
+const COURSE_REFINE_TARGET_NM = 2
+const THRESHOLD_ALIGN_TARGET_NM = 0.5
+const THRESHOLD_ALIGN_MAX_STDDEV_FT = 30
+const THRESHOLD_ALIGN_MAX_SHIFT_FT = 200
+const FT_TO_M = 0.3048
 
 function getAltAtTimestamp(timestamp, path) {
   let best = null, minDiff = Infinity
@@ -133,23 +143,62 @@ function identifyRunway(landing, path, candidates) {
   return best
 }
 
+function forwardTrackBearing(path, fromIdx, maxIdx) {
+  for (let j = fromIdx + 1; j <= maxIdx; j++) {
+    const d = distanceM(path[fromIdx][1], path[fromIdx][2], path[j][1], path[j][2])
+    if (d >= TRACK_WINDOW_M && (j - fromIdx) >= TRACK_WINDOW_MIN_SAMPLES) {
+      return { bearingDeg: bearing(path[fromIdx][1], path[fromIdx][2], path[j][1], path[j][2]), distM: d }
+    }
+  }
+  if (maxIdx > fromIdx) {
+    const d = distanceM(path[fromIdx][1], path[fromIdx][2], path[maxIdx][1], path[maxIdx][2])
+    return { bearingDeg: bearing(path[fromIdx][1], path[fromIdx][2], path[maxIdx][1], path[maxIdx][2]), distM: d }
+  }
+  return null
+}
+
 function computeApproachSegment(landing, path, runway) {
   const landingIdx = findLandingPathIndex(landing, path)
   let startIdx = landingIdx
+  let outOfConeCount = 0
 
   for (let i = landingIdx - 1; i >= 1; i--) {
     const distNm = distanceM(runway.thresholdLat, runway.thresholdLon, path[i][1], path[i][2]) / NM_TO_M
     if (distNm > APPROACH_MAX_NM) break
 
-    const segDist = distanceM(path[i][1], path[i][2], path[i + 1][1], path[i + 1][2])
-    if (segDist < 1) {
+    const window = forwardTrackBearing(path, i, landingIdx)
+    if (!window || window.distM < SEG_MIN_DIST_M) {
       startIdx = i
       continue
     }
 
-    const trackBrg = bearing(path[i][1], path[i][2], path[i + 1][1], path[i + 1][2])
-    if (angleDiff(trackBrg, runway.approachHeadingT) > APPROACH_ANGLE_DEG) break
+    if (angleDiff(window.bearingDeg, runway.approachHeadingT) > APPROACH_ANGLE_DEG) {
+      outOfConeCount++
+      if (outOfConeCount >= OUT_OF_CONE_TOLERANCE) break
+      continue
+    }
+    outOfConeCount = 0
     startIdx = i
+  }
+
+  if (landingIdx - startIdx < 1) {
+    const inCone = new Array(landingIdx + 1).fill(false)
+    for (let i = 0; i <= landingIdx; i++) {
+      const distNm = distanceM(runway.thresholdLat, runway.thresholdLon, path[i][1], path[i][2]) / NM_TO_M
+      if (distNm > APPROACH_MAX_NM) continue
+      if (i === landingIdx) { inCone[i] = true; continue }
+      const w = forwardTrackBearing(path, i, landingIdx)
+      if (!w) { inCone[i] = true; continue }
+      if (w.distM < SEG_MIN_DIST_M) { inCone[i] = true; continue }
+      inCone[i] = angleDiff(w.bearingDeg, runway.approachHeadingT) <= APPROACH_ANGLE_DEG
+    }
+    let runStart = landingIdx
+    let gap = 0
+    for (let i = landingIdx - 1; i >= 0; i--) {
+      if (inCone[i]) { runStart = i; gap = 0 }
+      else { gap++; if (gap >= OUT_OF_CONE_TOLERANCE) break }
+    }
+    if (landingIdx - runStart >= 1) startIdx = runStart
   }
 
   const raw = path.slice(startIdx, landingIdx + 1)
@@ -195,6 +244,84 @@ function buildFunnelLines(maxNm) {
     right.push([parseFloat((d * funnelPerNm).toFixed(1)), d])
   }
   return { left, right }
+}
+
+function signedAngleOffset(b, ref) {
+  let diff = b - ref
+  if (diff > 180) diff -= 360
+  if (diff < -180) diff += 360
+  return diff
+}
+
+function refineRunwayCourse(runway, segment) {
+  if (segment.length < 4) return runway
+
+  const targetM = NM_TO_M * COURSE_REFINE_TARGET_NM
+  const minStartI = Math.floor(segment.length / 2)
+  let accumDist = 0
+  let startI = minStartI
+  for (let i = segment.length - 2; i >= minStartI; i--) {
+    accumDist += distanceM(segment[i][1], segment[i][2], segment[i + 1][1], segment[i + 1][2])
+    if (accumDist >= targetM) { startI = i; break }
+  }
+
+  const offsets = []
+  for (let i = startI; i < segment.length - 1; i++) {
+    const d = distanceM(segment[i][1], segment[i][2], segment[i + 1][1], segment[i + 1][2])
+    if (d < SEG_MIN_DIST_M) continue
+    const b = bearing(segment[i][1], segment[i][2], segment[i + 1][1], segment[i + 1][2])
+    offsets.push(signedAngleOffset(b, runway.approachHeadingT))
+  }
+  if (offsets.length < 3) return runway
+
+  offsets.sort((a, b) => a - b)
+  const medianOffset = offsets[Math.floor(offsets.length / 2)]
+  if (Math.abs(medianOffset) > COURSE_REFINE_MAX_OFFSET_DEG) return runway
+
+  const refinedT = (runway.approachHeadingT + medianOffset + 360) % 360
+  const refinedM = (runway.approachHeadingM + medianOffset + 360) % 360
+  return { ...runway, approachHeadingT: refinedT, approachHeadingM: refinedM }
+}
+
+function refineRunwayThreshold(runway, segment) {
+  if (segment.length < 4) return runway
+
+  const targetM = NM_TO_M * THRESHOLD_ALIGN_TARGET_NM
+  const minStartI = Math.floor(segment.length * 0.7)
+  let accumDist = 0
+  let startI = minStartI
+  for (let i = segment.length - 2; i >= minStartI; i--) {
+    accumDist += distanceM(segment[i][1], segment[i][2], segment[i + 1][1], segment[i + 1][2])
+    if (accumDist >= targetM) { startI = i; break }
+  }
+
+  const reverseHdg = (runway.approachHeadingT + 180) % 360
+  const devs = []
+  for (let i = startI; i < segment.length; i++) {
+    const p = segment[i]
+    const distM_val = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2])
+    if (distM_val < 0.01) continue
+    const brgFromThr = bearing(runway.thresholdLat, runway.thresholdLon, p[1], p[2])
+    const relAngle = (reverseHdg - brgFromThr + 360) % 360
+    const devFt = distM_val * Math.sin(relAngle * Math.PI / 180) * M_TO_FT
+    devs.push(devFt)
+  }
+  if (devs.length < 3) return runway
+
+  const sorted = [...devs].sort((a, b) => a - b)
+  const median = sorted[Math.floor(sorted.length / 2)]
+  const mean = devs.reduce((s, v) => s + v, 0) / devs.length
+  const variance = devs.reduce((s, v) => s + (v - mean) ** 2, 0) / devs.length
+  const stddev = Math.sqrt(variance)
+
+  if (stddev > THRESHOLD_ALIGN_MAX_STDDEV_FT) return runway
+  if (Math.abs(median) > THRESHOLD_ALIGN_MAX_SHIFT_FT) return runway
+
+  const shiftDir = median >= 0 ? (runway.approachHeadingT + 90) % 360 : (runway.approachHeadingT - 90 + 360) % 360
+  const shiftDistM = Math.abs(median) * FT_TO_M
+  const [newLat, newLon] = destination(runway.thresholdLat, runway.thresholdLon, shiftDir, shiftDistM)
+
+  return { ...runway, thresholdLat: newLat, thresholdLon: newLon }
 }
 
 function buildRowData(icao, runway, segment, gsAngle = 3) {
@@ -256,7 +383,9 @@ async function processLanding(landing, data) {
   const segment = computeApproachSegment(landing, data.path, runway)
   if (segment.length < 2) return { error: 'Approach segment too short', runwayLabel: `${icao} / RWY ${runway.ident}` }
 
-  return buildRowData(icao, runway, segment)
+  let refined = refineRunwayCourse(runway, segment)
+  refined = refineRunwayThreshold(refined, segment)
+  return buildRowData(icao, refined, segment)
 }
 
 export function useApproachAnalysis(flightDataRef) {
@@ -289,9 +418,11 @@ export function useApproachAnalysis(flightDataRef) {
     if (!row || row.error || !row._runway || !row._segment) return
 
     const runway = { ...row._runway }
-    const parsedCourseT = courseM !== '' && courseM != null ? parseFloat(courseM) : null
-    if (parsedCourseT != null && !isNaN(parsedCourseT)) {
-      runway.approachHeadingT = (parsedCourseT + 360) % 360
+    const parsedCourseM = courseM !== '' && courseM != null ? parseFloat(courseM) : null
+    if (parsedCourseM != null && !isNaN(parsedCourseM)) {
+      const magVar = runway.magVariation || 0
+      runway.approachHeadingM = (parsedCourseM + 360) % 360
+      runway.approachHeadingT = (parsedCourseM + magVar + 360) % 360
     }
     const angle = (gsAngle !== '' && gsAngle != null && !isNaN(parseFloat(gsAngle))) ? parseFloat(gsAngle) : 3
 
