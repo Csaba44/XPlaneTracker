@@ -1,5 +1,5 @@
 <script setup>
-import { toRef } from 'vue'
+import { ref, watch, toRef } from 'vue'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
@@ -13,7 +13,17 @@ const props = defineProps({
   flightData: { type: Object, default: null },
 })
 
-const { approachRows, isLoading } = useApproachAnalysis(toRef(props, 'flightData'))
+const { approachRows, isLoading, overrideRow } = useApproachAnalysis(toRef(props, 'flightData'))
+
+const overrideInputs = ref([])
+watch(approachRows, (rows) => {
+  overrideInputs.value = rows.map((_, i) => overrideInputs.value[i] ?? { courseM: '', gsAngle: '' })
+}, { immediate: true })
+
+const applyOverride = (idx) => {
+  const o = overrideInputs.value[idx]
+  if (o) overrideRow(idx, o.courseM, o.gsAngle)
+}
 
 const chartRefs = {}
 
@@ -216,7 +226,7 @@ const getVerticalOptions = (row) => {
         lineStyle: { color: '#ef4444', width: 2 },
       },
       {
-        name: '3° Glideslope',
+        name: `${row.gsAngle ?? 3}° Glideslope`,
         type: 'line',
         yAxisIndex: 0,
         smooth: false,
@@ -271,37 +281,73 @@ const getVerticalOptions = (row) => {
           <p class="text-red-400 text-xs font-mono">{{ row.error }}</p>
         </div>
 
-        <div v-else class="flex gap-4" style="min-height: 400px">
-          <div class="flex-1 bg-flight-sidebar border border-flight-border rounded-xl p-4 flex flex-col gap-2">
-            <div class="flex items-center justify-between">
-              <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Lateral Profile</span>
-              <button @click="resetChart(idx, 0)" class="text-[9px] font-bold text-slate-500 hover:text-flight-accent transition-colors uppercase tracking-widest">Reset</button>
+        <template v-else>
+          <div v-if="overrideInputs[idx]" class="flex items-end gap-3">
+            <div class="flex flex-col gap-1">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Approach Course (°T)</span>
+              <div class="relative">
+                <input
+                  v-model="overrideInputs[idx].courseM"
+                  type="number"
+                  :placeholder="row.detectedCourseM"
+                  class="w-28 bg-flight-card border border-flight-border rounded-lg px-3 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
+              </div>
             </div>
-            <div class="flex-1" style="min-height: 340px">
-              <v-chart
-                :ref="el => setChartRef(idx, 0, el)"
-                style="width: 100%; height: 100%"
-                :option="getLateralOptions(row)"
-                autoresize
-              />
+            <div class="flex flex-col gap-1">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Glideslope</span>
+              <div class="relative">
+                <input
+                  v-model="overrideInputs[idx].gsAngle"
+                  type="number"
+                  step="0.1"
+                  placeholder="3.0"
+                  class="w-24 bg-flight-card border border-flight-border rounded-lg px-3 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors"
+                />
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
+              </div>
             </div>
+            <button
+              @click="applyOverride(idx)"
+              class="bg-flight-card hover:bg-slate-800 text-white font-bold py-1.5 px-3 rounded-lg transition-colors uppercase tracking-widest text-[9px] border border-flight-border self-end"
+            >
+              Apply
+            </button>
           </div>
 
-          <div class="flex-1 bg-flight-sidebar border border-flight-border rounded-xl p-4 flex flex-col gap-2">
-            <div class="flex items-center justify-between">
-              <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Approach Profile</span>
-              <button @click="resetChart(idx, 1)" class="text-[9px] font-bold text-slate-500 hover:text-flight-accent transition-colors uppercase tracking-widest">Reset</button>
+          <div class="flex gap-4" style="min-height: 400px">
+            <div class="flex-1 bg-flight-sidebar border border-flight-border rounded-xl p-4 flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Lateral Profile</span>
+                <button @click="resetChart(idx, 0)" class="text-[9px] font-bold text-slate-500 hover:text-flight-accent transition-colors uppercase tracking-widest">Reset</button>
+              </div>
+              <div class="flex-1" style="min-height: 340px">
+                <v-chart
+                  :ref="el => setChartRef(idx, 0, el)"
+                  style="width: 100%; height: 100%"
+                  :option="getLateralOptions(row)"
+                  autoresize
+                />
+              </div>
             </div>
-            <div class="flex-1" style="min-height: 340px">
-              <v-chart
-                :ref="el => setChartRef(idx, 1, el)"
-                style="width: 100%; height: 100%"
-                :option="getVerticalOptions(row)"
-                autoresize
-              />
+
+            <div class="flex-1 bg-flight-sidebar border border-flight-border rounded-xl p-4 flex flex-col gap-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Approach Profile</span>
+                <button @click="resetChart(idx, 1)" class="text-[9px] font-bold text-slate-500 hover:text-flight-accent transition-colors uppercase tracking-widest">Reset</button>
+              </div>
+              <div class="flex-1" style="min-height: 340px">
+                <v-chart
+                  :ref="el => setChartRef(idx, 1, el)"
+                  style="width: 100%; height: 100%"
+                  :option="getVerticalOptions(row)"
+                  autoresize
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </template>
       </div>
     </template>
   </div>

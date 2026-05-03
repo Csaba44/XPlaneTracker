@@ -79,6 +79,9 @@ const popoutStyle = computed(() => {
           <button v-if="isSelected" @click.stop="$emit('share')" class="text-flight-accent hover:text-white transition-colors bg-flight-accent/10 hover:bg-flight-accent p-1.5 rounded-md cursor-pointer">
             <i class="fa-solid fa-share-nodes"></i>
           </button>
+          <a v-if="isSelected" :href="`/api/flights/${flight.id}/download`" @click.stop class="text-slate-600 hover:text-slate-400 transition-colors p-1.5 rounded-md cursor-pointer">
+            <i class="fa-solid fa-download text-[11px]"></i>
+          </a>
           <i class="fa-solid fa-chevron-right text-slate-700 group-hover:text-flight-accent transition-colors ml-1"></i>
         </div>
       </div>

@@ -21,9 +21,9 @@ const triggerFileInput = () => {
 };
 
 const handleFileChange = (event) => {
-  const file = event.target.files[0];
-  if (file) {
-    emit("uploadFile", file);
+  const files = Array.from(event.target.files);
+  if (files.length) {
+    emit("uploadFile", files);
   }
   event.target.value = null;
 };
@@ -110,7 +110,7 @@ onUnmounted(() => {
           <i class="fa-solid fa-key"></i> Generate API Key
         </button>
 
-        <input type="file" accept=".gz" ref="fileInput" @change="handleFileChange" style="display: none" />
+        <input type="file" accept=".gz" multiple ref="fileInput" @change="handleFileChange" style="display: none" />
         <button
           @click="
             () => {

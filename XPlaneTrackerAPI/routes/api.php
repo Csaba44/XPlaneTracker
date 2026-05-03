@@ -29,6 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/flights/{flight}', [FlightController::class, 'update']);
     Route::delete('/flights/{flight}', [FlightController::class, 'destroy']);
     Route::get('/flights/friends', [FlightController::class, 'friendsFlights']);
+    Route::get('/flights/{flight}/download', [FlightController::class, 'download']);
 
     Route::get('/admin/users', [AdminUserController::class, 'index']);
     Route::post('/admin/users', [AdminUserController::class, 'store']);

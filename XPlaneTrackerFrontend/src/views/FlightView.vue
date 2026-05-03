@@ -121,27 +121,31 @@ const generateApiKey = async () => {
   }
 };
 
-const handleFileUpload = async (file) => {
-  const formData = new FormData();
-  formData.append("flight_file", file);
-
+const handleFileUpload = async (files) => {
   isUploading.value = true;
+  let succeeded = 0;
+  let failed = 0;
 
-  try {
-    const response = await api.post("/api/flights", formData, {
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append("flight_file", file);
 
-    flights.value.push(response.data);
-    toast.success("Járat sikeresen feltöltve.");
-  } catch (error) {
-    console.error(error);
-    toast.error(error.response?.data?.message || "Hiba a járat feltöltésekor.");
-  } finally {
-    isUploading.value = false;
+    try {
+      const response = await api.post("/api/flights", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      flights.value.push(response.data);
+      succeeded++;
+    } catch (error) {
+      console.error(error);
+      failed++;
+    }
   }
+
+  isUploading.value = false;
+
+  if (succeeded > 0) toast.success(`${succeeded} flight${succeeded > 1 ? "s" : ""} uploaded successfully.`);
+  if (failed > 0) toast.error(`${failed} flight${failed > 1 ? "s" : ""} failed to upload.`);
 };
 
 const shareFlight = async (id) => {

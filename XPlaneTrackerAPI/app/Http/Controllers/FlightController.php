@@ -237,6 +237,30 @@ class FlightController extends Controller
         return response()->json(null, 204);
     }
 
+    public function download(Flight $flight)
+    {
+        if ($flight->user_id !== Auth::id()) {
+            return response()->json(['error' => 'Unauthorized action.'], 403);
+        }
+
+        $disk = Storage::disk('public');
+
+        if (!$disk->exists($flight->file_path)) {
+            return response()->json(['error' => 'File not found'], 404);
+        }
+
+        $callsign  = $flight->callsign  ?? 'unknown';
+        $timestamp = $flight->start_time
+            ? \Carbon\Carbon::parse($flight->start_time)->format('Ymd_His')
+            : 'unknown';
+
+        $filename = "flight_{$callsign}_{$timestamp}.json.gz";
+
+        return response()->download($disk->path($flight->file_path), $filename, [
+            'Content-Type' => 'application/gzip',
+        ]);
+    }
+
     private function getDistanceInMeters($lat1, $lon1, $lat2, $lon2)
     {
         $earthRadius = 6371000;

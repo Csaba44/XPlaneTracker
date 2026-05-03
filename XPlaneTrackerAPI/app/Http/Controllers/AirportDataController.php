@@ -36,8 +36,6 @@ class AirportDataController extends Controller
                 $rwy['le_elevation_m'] = isset($rwy['le_elevation_ft']) ? round($rwy['le_elevation_ft'] * 0.3048, 2) : null;
                 $rwy['he_elevation_m'] = isset($rwy['he_elevation_ft']) ? round($rwy['he_elevation_ft'] * 0.3048, 2) : null;
 
-                $rwy['le_heading_degM'] = isset($rwy['le_heading_degT']) ? round($rwy['le_heading_degT'], 0) : null;
-                $rwy['he_heading_degM'] = isset($rwy['he_heading_degT']) ? round($rwy['he_heading_degT'], 0) : null;
             }
         }
 
