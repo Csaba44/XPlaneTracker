@@ -7,6 +7,8 @@ const BOUNCE_THRESHOLD_FT = 500
 const APPROACH_ANGLE_DEG = 10
 const APPROACH_MAX_NM = 20
 const RUNWAY_MATCH_DEG = 30
+const PARALLEL_TIEBREAK_DEG = 5
+const LOC_DOT_DEG = 1.25
 const NM_TO_M = 1852
 const FT_PER_NM = 6076.12
 const M_TO_FT = 3.28084
@@ -50,26 +52,42 @@ async function findAirportIcao(landing, metadata) {
   return bestDist < 20000 ? bestIcao : null
 }
 
+function resolveApproachHeadingT(headingT, headingM) {
+  if (headingT != null) return headingT
+  if (headingM != null) return headingM
+  return null
+}
+
 function buildCandidates(runways) {
   const cands = []
   for (const rwy of runways) {
-    if (rwy.le_latitude_deg && rwy.le_longitude_deg && rwy.le_heading_degM != null) {
-      cands.push({
-        ident: rwy.le_ident,
-        thresholdLat: parseFloat(rwy.le_latitude_deg),
-        thresholdLon: parseFloat(rwy.le_longitude_deg),
-        elevationFt: parseFloat(rwy.le_elevation_ft) || 0,
-        approachHeading: parseFloat(rwy.le_heading_degM),
-      })
+    if (rwy.le_latitude_deg && rwy.le_longitude_deg) {
+      const headingT = rwy.le_heading_degT != null ? parseFloat(rwy.le_heading_degT) : null
+      const headingM = rwy.le_heading_degM != null ? parseFloat(rwy.le_heading_degM) : null
+      const approachHeadingT = resolveApproachHeadingT(headingT, headingM)
+      if (approachHeadingT != null) {
+        cands.push({
+          ident: rwy.le_ident,
+          thresholdLat: parseFloat(rwy.le_latitude_deg),
+          thresholdLon: parseFloat(rwy.le_longitude_deg),
+          elevationFt: parseFloat(rwy.le_elevation_ft) || 0,
+          approachHeadingT,
+        })
+      }
     }
-    if (rwy.he_latitude_deg && rwy.he_longitude_deg && rwy.he_heading_degM != null) {
-      cands.push({
-        ident: rwy.he_ident,
-        thresholdLat: parseFloat(rwy.he_latitude_deg),
-        thresholdLon: parseFloat(rwy.he_longitude_deg),
-        elevationFt: parseFloat(rwy.he_elevation_ft) || 0,
-        approachHeading: parseFloat(rwy.he_heading_degM),
-      })
+    if (rwy.he_latitude_deg && rwy.he_longitude_deg) {
+      const headingT = rwy.he_heading_degT != null ? parseFloat(rwy.he_heading_degT) : null
+      const headingM = rwy.he_heading_degM != null ? parseFloat(rwy.he_heading_degM) : null
+      const approachHeadingT = resolveApproachHeadingT(headingT, headingM)
+      if (approachHeadingT != null) {
+        cands.push({
+          ident: rwy.he_ident,
+          thresholdLat: parseFloat(rwy.he_latitude_deg),
+          thresholdLon: parseFloat(rwy.he_longitude_deg),
+          elevationFt: parseFloat(rwy.he_elevation_ft) || 0,
+          approachHeadingT,
+        })
+      }
     }
   }
   return cands
@@ -82,6 +100,15 @@ function findLandingPathIndex(landing, path) {
   }, { i: 0, d: Infinity }).i
 }
 
+function perpDistFromCenterlineM(lat, lon, runway) {
+  const distM_val = distanceM(runway.thresholdLat, runway.thresholdLon, lat, lon)
+  if (distM_val < 0.01) return 0
+  const brgFromThr = bearing(runway.thresholdLat, runway.thresholdLon, lat, lon)
+  const reverseHdg = (runway.approachHeadingT + 180) % 360
+  const relAngle = angleDiff(brgFromThr, reverseHdg)
+  return Math.abs(distM_val * Math.sin(relAngle * Math.PI / 180))
+}
+
 function identifyRunway(landing, path, candidates) {
   const landingIdx = findLandingPathIndex(landing, path)
   const start = Math.max(0, landingIdx - 20)
@@ -89,44 +116,53 @@ function identifyRunway(landing, path, candidates) {
   if (sample.length < 2) return null
   const first = sample[0]
   const meanBrg = bearing(first[1], first[2], landing.lat, landing.lon)
-  let best = null, bestDiff = Infinity
-  for (const cand of candidates) {
-    const diff = angleDiff(meanBrg, cand.approachHeading)
-    if (diff < bestDiff) { bestDiff = diff; best = cand }
+
+  const scored = candidates
+    .map(c => ({ cand: c, diff: angleDiff(meanBrg, c.approachHeadingT) }))
+    .filter(x => x.diff <= RUNWAY_MATCH_DEG)
+  if (!scored.length) return null
+
+  const minDiff = Math.min(...scored.map(x => x.diff))
+  const tied = scored.filter(x => x.diff - minDiff <= PARALLEL_TIEBREAK_DEG)
+  if (tied.length === 1) return tied[0].cand
+
+  let best = null, bestPerp = Infinity
+  for (const { cand } of tied) {
+    const perp = perpDistFromCenterlineM(landing.lat, landing.lon, cand)
+    if (perp < bestPerp) { bestPerp = perp; best = cand }
   }
-  return bestDiff <= RUNWAY_MATCH_DEG ? best : null
+  return best
 }
 
 function computeApproachSegment(landing, path, runway) {
   const landingIdx = findLandingPathIndex(landing, path)
   let startIdx = landingIdx
 
-  for (let i = landingIdx - 1; i >= 0; i--) {
-    const p = path[i]
-    const distNm = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2]) / NM_TO_M
+  for (let i = landingIdx - 1; i >= 1; i--) {
+    const distNm = distanceM(runway.thresholdLat, runway.thresholdLon, path[i][1], path[i][2]) / NM_TO_M
     if (distNm > APPROACH_MAX_NM) break
-    startIdx = i
-  }
 
-  for (let i = startIdx; i < landingIdx; i++) {
-    const p = path[i]
-    const brgToThr = bearing(p[1], p[2], runway.thresholdLat, runway.thresholdLon)
-    if (angleDiff(brgToThr, runway.approachHeading) <= APPROACH_ANGLE_DEG) {
+    const segDist = distanceM(path[i][1], path[i][2], path[i + 1][1], path[i + 1][2])
+    if (segDist < 1) {
       startIdx = i
-      break
+      continue
     }
+
+    const trackBrg = bearing(path[i][1], path[i][2], path[i + 1][1], path[i + 1][2])
+    if (angleDiff(trackBrg, runway.approachHeadingT) > APPROACH_ANGLE_DEG) break
+    startIdx = i
   }
 
   return path.slice(startIdx, landingIdx + 1)
 }
 
 function computeLateralPoints(segment, runway) {
-  const reverseHdg = (runway.approachHeading + 180) % 360
+  const reverseHdg = (runway.approachHeadingT + 180) % 360
   return segment.map(p => {
     const brgFromThr = bearing(runway.thresholdLat, runway.thresholdLon, p[1], p[2])
     const distM_val = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2])
     const nmToThr = distM_val / NM_TO_M
-    const relAngle = (brgFromThr - reverseHdg + 360) % 360
+    const relAngle = (reverseHdg - brgFromThr + 360) % 360
     const deviationFt = distM_val * Math.sin(relAngle * Math.PI / 180) * M_TO_FT
     return [parseFloat(deviationFt.toFixed(1)), parseFloat(nmToThr.toFixed(3))]
   })
@@ -144,7 +180,7 @@ function buildGsRefLines(maxNm, elevFt) {
 
 function buildFunnelLines(maxNm) {
   const left = [], right = []
-  const funnelPerNm = FT_PER_NM * Math.tan(2.5 * Math.PI / 180)
+  const funnelPerNm = FT_PER_NM * Math.tan(LOC_DOT_DEG * Math.PI / 180)
   for (let d = 0; d <= maxNm + 0.05; d = parseFloat((d + 0.1).toFixed(1))) {
     left.push([-parseFloat((d * funnelPerNm).toFixed(1)), d])
     right.push([parseFloat((d * funnelPerNm).toFixed(1)), d])
@@ -179,9 +215,10 @@ async function processLanding(landing, data) {
   const { gsRef, gsPlus, gsMinus } = buildGsRefLines(approachMaxNm, runway.elevationFt)
   const { left, right } = buildFunnelLines(approachMaxNm)
 
-  const verticalAlt = segment.map(p => {
+  const verticalAlt = segment.map((p, idx) => {
     const nm = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2]) / NM_TO_M
-    return [parseFloat(nm.toFixed(3)), p[3]]
+    const dev = lateralPoints[idx] ? lateralPoints[idx][0] : 0
+    return [parseFloat(nm.toFixed(3)), p[3], parseFloat(dev.toFixed(1))]
   })
   const verticalGs = segment.map(p => {
     const nm = distanceM(runway.thresholdLat, runway.thresholdLon, p[1], p[2]) / NM_TO_M

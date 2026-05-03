@@ -70,6 +70,12 @@ const getLateralOptions = (row) => ({
   },
   tooltip: {
     ...TOOLTIP_BASE,
+    trigger: 'axis',
+    axisPointer: {
+      type: 'line',
+      axis: 'y',
+      lineStyle: { color: '#475569', type: 'dashed', width: 1 },
+    },
     formatter: (params) => {
       const d = params.find(p => p.seriesName === 'Aircraft Path')?.data
       if (!d) return ''
@@ -94,7 +100,7 @@ const getLateralOptions = (row) => ({
       },
     },
     {
-      name: 'LOC (2.5°)',
+      name: 'LOC ±1 dot',
       type: 'line',
       smooth: false,
       symbol: 'none',
@@ -102,7 +108,7 @@ const getLateralOptions = (row) => ({
       lineStyle: { color: '#475569', type: 'dashed', width: 1 },
     },
     {
-      name: 'LOC (2.5°)',
+      name: 'LOC ±1 dot',
       type: 'line',
       smooth: false,
       symbol: 'none',
@@ -174,7 +180,9 @@ const getVerticalOptions = (row) => {
         const alt = params.find(p => p.seriesName === 'Altitude (ft)')?.data
         const gs = params.find(p => p.seriesName === 'Groundspeed (kts)')?.data
         const nm = alt ? alt[0].toFixed(1) : '—'
-        return `Dist: ${nm} NM<br/>Alt: ${alt ? alt[1] : '—'} ft<br/>GS: ${gs ? gs[1] : '—'} kts`
+        const dev = alt?.[2]
+        const devStr = dev !== undefined ? `${Math.abs(dev).toFixed(0)}ft ${dev >= 0 ? 'R' : 'L'}` : '—'
+        return `Dist: ${nm} NM<br/>Alt: ${alt ? alt[1] : '—'} ft<br/>GS: ${gs ? gs[1] : '—'} kts<br/>Dev: ${devStr}`
       },
     },
     series: [
