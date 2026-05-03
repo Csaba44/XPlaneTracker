@@ -4,6 +4,30 @@ import { bearing, destination, distanceM, offsetPolyline, designatorToHeading, a
 
 const runwayCache = new Map();
 const pendingRequests = new Set();
+const EXTENDED_CENTERLINE_NM = 15;
+const NM_TO_M = 1852;
+
+export const drawExtendedCenterline = (el, map, pathLayers) => {
+  if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
+  const cl = el.geometry.map((g) => [g.lat, g.lon]);
+  const leTh = cl[0];
+  const heTh = cl[cl.length - 1];
+  const leInward = bearing(leTh[0], leTh[1], heTh[0], heTh[1]);
+  const heInward = bearing(heTh[0], heTh[1], leTh[0], leTh[1]);
+  const distM = EXTENDED_CENTERLINE_NM * NM_TO_M;
+  const leExtEnd = destination(leTh[0], leTh[1], (leInward + 180) % 360, distM);
+  const heExtEnd = destination(heTh[0], heTh[1], (heInward + 180) % 360, distM);
+  const style = {
+    color: "#94a3b8",
+    weight: 1,
+    opacity: 0.35,
+    dashArray: "6 8",
+    interactive: false,
+    pane: "extendedCenterlinePane",
+  };
+  pathLayers.push(L.polyline([leTh, leExtEnd], style).addTo(map));
+  pathLayers.push(L.polyline([heTh, heExtEnd], style).addTo(map));
+};
 
 export const drawDisplacedThreshold = (el, map, pathLayers) => {
   if (el.type !== "way" || !el.geometry || el.geometry.length < 2) return;
@@ -176,7 +200,10 @@ export const fetchAndDrawRunways = async (lat, lon, map, pathLayers) => {
   const key = localCacheKey(lat, lon);
   if (runwayCache.has(key)) {
     const cached = runwayCache.get(key);
-    cached.filter(el => el.tags?.runway !== "displaced_threshold").forEach((el) => drawRunway(el, map, pathLayers));
+    cached.filter(el => el.tags?.runway !== "displaced_threshold").forEach((el) => {
+      drawRunway(el, map, pathLayers);
+      drawExtendedCenterline(el, map, pathLayers);
+    });
     cached.filter(el => el.tags?.runway === "displaced_threshold").forEach((el) => drawDisplacedThreshold(el, map, pathLayers));
     return;
   }
@@ -187,7 +214,10 @@ export const fetchAndDrawRunways = async (lat, lon, map, pathLayers) => {
     const data = response.data;
     if (data.elements) {
       runwayCache.set(key, data.elements);
-      data.elements.filter(el => el.tags?.runway !== "displaced_threshold").forEach((el) => drawRunway(el, map, pathLayers));
+      data.elements.filter(el => el.tags?.runway !== "displaced_threshold").forEach((el) => {
+        drawRunway(el, map, pathLayers);
+        drawExtendedCenterline(el, map, pathLayers);
+      });
       data.elements.filter(el => el.tags?.runway === "displaced_threshold").forEach((el) => drawDisplacedThreshold(el, map, pathLayers));
     }
   } catch (err) {

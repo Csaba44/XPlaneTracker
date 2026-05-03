@@ -54,6 +54,7 @@ const showRunways = ref(getStorage("flightMap_showRunways", true));
 const showTaxiways = ref(getStorage("flightMap_showTaxiways", true));
 const showStands = ref(getStorage("flightMap_showStands", false));
 const showGates = ref(getStorage("flightMap_showGates", false));
+const showExtendedCenterline = ref(getStorage("flightMap_showExtendedCenterline", false));
 
 const isLayersMenuOpen = ref(false);
 
@@ -159,6 +160,7 @@ const initMap = () => {
   map.createPane("taxiwaysPane").style.zIndex = 385;
   map.createPane("standsPane").style.zIndex = 395;
   map.createPane("gatesPane").style.zIndex = 396;
+  map.createPane("extendedCenterlinePane").style.zIndex = 387;
 
   tileLayerDark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 20 });
   tileLayerSatellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", { maxZoom: 20, attribution: "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community" });
@@ -173,6 +175,9 @@ const initMap = () => {
   // Load initial runway visibility based on saved preference
   if (!showRunways.value) {
     map.getPane("runwaysPane").style.display = "none";
+  }
+  if (!showExtendedCenterline.value) {
+    map.getPane("extendedCenterlinePane").style.display = "none";
   }
 };
 
@@ -507,6 +512,12 @@ watch(showRunways, (val) => {
   map.getPane("runwaysPane").style.display = val ? "" : "none";
 });
 
+watch(showExtendedCenterline, (val) => {
+  localStorage.setItem("flightMap_showExtendedCenterline", JSON.stringify(val));
+  if (!map) return;
+  map.getPane("extendedCenterlinePane").style.display = val ? "" : "none";
+});
+
 watch(showTaxiways, (val) => {
   localStorage.setItem("flightMap_showTaxiways", JSON.stringify(val));
   redrawFeatures();
@@ -558,6 +569,12 @@ onMounted(() => {
             <i class="fa-solid fa-plane-departure w-3.5 text-center"></i>
             <span>Pályák</span>
             <span v-if="showRunways" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+          </button>
+
+          <button @click="showExtendedCenterline = !showExtendedCenterline" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showExtendedCenterline ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-arrows-left-right w-3.5 text-center"></i>
+            <span>Extended Centerline</span>
+            <span v-if="showExtendedCenterline" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
 
           <button @click="showTaxiways = !showTaxiways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showTaxiways ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">

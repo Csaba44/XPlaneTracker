@@ -420,9 +420,10 @@ export function useApproachAnalysis(flightDataRef) {
     const runway = { ...row._runway }
     const parsedCourseM = courseM !== '' && courseM != null ? parseFloat(courseM) : null
     if (parsedCourseM != null && !isNaN(parsedCourseM)) {
-      const magVar = runway.magVariation || 0
-      runway.approachHeadingM = (parsedCourseM + 360) % 360
-      runway.approachHeadingT = (parsedCourseM + magVar + 360) % 360
+      const placeholderM = Math.round(runway.approachHeadingM)
+      const delta = parsedCourseM - placeholderM
+      runway.approachHeadingT = (runway.approachHeadingT + delta + 360) % 360
+      runway.approachHeadingM = (runway.approachHeadingM + delta + 360) % 360
     }
     const angle = (gsAngle !== '' && gsAngle != null && !isNaN(parseFloat(gsAngle))) ? parseFloat(gsAngle) : 3
 

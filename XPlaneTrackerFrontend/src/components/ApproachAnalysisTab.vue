@@ -285,25 +285,25 @@ const getVerticalOptions = (row) => {
           <div v-if="overrideInputs[idx]" class="flex items-end gap-3">
             <div class="flex flex-col gap-1">
               <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Approach Course (°M)</span>
-              <div class="relative">
+              <div class="relative w-28">
                 <input
                   v-model="overrideInputs[idx].courseM"
                   type="number"
                   :placeholder="row.detectedCourseM"
-                  class="w-28 bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors"
+                  class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors"
                 />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
               </div>
             </div>
             <div class="flex flex-col gap-1">
               <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Glideslope</span>
-              <div class="relative">
+              <div class="relative w-24">
                 <input
                   v-model="overrideInputs[idx].gsAngle"
                   type="number"
                   step="0.1"
                   placeholder="3.0"
-                  class="w-24 bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors"
+                  class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors"
                 />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
               </div>
