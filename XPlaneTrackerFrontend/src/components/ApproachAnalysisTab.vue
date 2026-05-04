@@ -13,7 +13,7 @@ const props = defineProps({
   flightData: { type: Object, default: null },
 });
 
-const { approachRows, isLoading, overrideRow } = useApproachAnalysis(toRef(props, "flightData"));
+const { approachRows, isLoading, overrideRow, getRolloutCourse } = useApproachAnalysis(toRef(props, "flightData"));
 
 const overrideInputs = ref([]);
 watch(
@@ -27,6 +27,17 @@ watch(
 const applyOverride = (idx) => {
   const o = overrideInputs.value[idx];
   if (o) overrideRow(idx, o.courseT, o.gsAngle);
+};
+
+const fillFromRollout = (idx) => {
+  const o = overrideInputs.value[idx];
+  if (!o) return;
+  const course = getRolloutCourse(idx);
+  if (course == null) {
+    o.courseT = "";
+    return;
+  }
+  o.courseT = course.toFixed(2);
 };
 
 const chartRefs = {};
@@ -289,9 +300,12 @@ const getVerticalOptions = (row) => {
           <div v-if="overrideInputs[idx]" class="flex items-end gap-3">
             <div class="flex flex-col gap-1">
               <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Approach Course (°T)</span>
-              <div class="relative w-28">
-                <input v-model="overrideInputs[idx].courseT" type="number" :placeholder="row.detectedCourseT" class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors" />
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
+              <div class="flex items-center gap-2">
+                <div class="relative w-28">
+                  <input v-model="overrideInputs[idx].courseT" type="number" :placeholder="row.detectedCourseT" class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors" />
+                  <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
+                </div>
+                <button @click="fillFromRollout(idx)" title="Compute course from post-touchdown rollout track" class="bg-flight-card hover:bg-slate-800 text-white font-bold py-1.5 px-3 rounded-lg transition-colors uppercase tracking-widest text-[9px] border border-flight-border whitespace-nowrap"><i class="fa-solid fa-route mr-1"></i>From Rollout</button>
               </div>
             </div>
             <div class="flex flex-col gap-1">

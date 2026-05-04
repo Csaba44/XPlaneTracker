@@ -20,6 +20,10 @@ const THRESHOLD_ALIGN_TARGET_NM = 0.5
 const THRESHOLD_ALIGN_MAX_STDDEV_FT = 30
 const THRESHOLD_ALIGN_MAX_SHIFT_FT = 200
 const FT_TO_M = 0.3048
+const ROLLOUT_MIN_SPEED_KT = 30
+const ROLLOUT_MAX_SECONDS = 30
+const ROLLOUT_MIN_DIST_M = 200
+const ROLLOUT_MAX_DIST_M = 2000
 
 function getAltAtTimestamp(timestamp, path) {
   let best = null, minDiff = Infinity
@@ -145,6 +149,31 @@ function buildCandidates(runways, preciseRunways = []) {
     if (he) cands.push(he)
   }
   return cands
+}
+
+function deriveCourseFromRollout(landing, path) {
+  if (!landing || !path?.length) return null
+  const startIdx = path.reduce((best, p, i) => {
+    const d = Math.abs(p[0] - landing.timestamp)
+    return d < best.d ? { i, d } : best
+  }, { i: 0, d: Infinity }).i
+
+  const t0 = path[startIdx][0]
+  let endIdx = startIdx
+  for (let i = startIdx + 1; i < path.length; i++) {
+    const p = path[i]
+    const speed = p[4] || 0
+    if (speed < ROLLOUT_MIN_SPEED_KT) break
+    if (p[0] - t0 > ROLLOUT_MAX_SECONDS) break
+    const d = distanceM(path[startIdx][1], path[startIdx][2], p[1], p[2])
+    if (d > ROLLOUT_MAX_DIST_M) break
+    endIdx = i
+  }
+
+  const dist = distanceM(path[startIdx][1], path[startIdx][2], path[endIdx][1], path[endIdx][2])
+  if (dist < ROLLOUT_MIN_DIST_M) return null
+
+  return bearing(path[startIdx][1], path[startIdx][2], path[endIdx][1], path[endIdx][2])
 }
 
 function findLandingPathIndex(landing, path) {
@@ -396,7 +425,9 @@ async function processLanding(landing, data) {
   if (segment.length < 2) return { error: 'Approach segment too short', runwayLabel: `${icao} / RWY ${runway.ident}` }
 
   const refined = refineRunwayThreshold(runway, segment)
-  return buildRowData(icao, refined, segment)
+  const row = buildRowData(icao, refined, segment)
+  row._landing = landing
+  return row
 }
 
 export function useApproachAnalysis(flightDataRef) {
@@ -439,10 +470,18 @@ export function useApproachAnalysis(flightDataRef) {
 
     const icao = row.runwayLabel.split(' / ')[0]
     const newData = buildRowData(icao, runway, row._segment, angle)
-    approachRows.value[rowIdx] = { ...newData, _runway: row._runway, _segment: row._segment }
+    approachRows.value[rowIdx] = { ...newData, _runway: row._runway, _segment: row._segment, _landing: row._landing }
+  }
+
+  const getRolloutCourse = (rowIdx) => {
+    const row = approachRows.value[rowIdx]
+    if (!row || row.error || !row._landing) return null
+    const path = flightDataRef.value?.path
+    if (!path?.length) return null
+    return deriveCourseFromRollout(row._landing, path)
   }
 
   watch(flightDataRef, (val) => process(val), { immediate: true, deep: false })
 
-  return { approachRows, isLoading, globalError, overrideRow }
+  return { approachRows, isLoading, globalError, overrideRow, getRolloutCourse }
 }
