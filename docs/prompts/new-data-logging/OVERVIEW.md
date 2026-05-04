@@ -60,3 +60,101 @@ Give me an order to test these, first, give me what should I fly in the sim, tha
 
 # Instructions
 Please ask me questions until you are at least 95% sure what you think, is what I really want. Create a new file with the plans under @docs/plans. Do not write any code yet.
+
+
+
+
+
+
+
+# You have already asked questions, here they are with answers:
+Key questions:                                                                                                                                        
+  
+  Altitude (Task #1)                                                                                                                                    
+  1. Want 3 alts logged each point (geometric MSL/current, indicated baro, AGL) or just 2 (current + indicated baro)? Indicated baro = altimeter w/
+  pilot's QNH set. AGL useful for landing/approach analysis.                                                                                            
+  2. X-Plane indicated alt source: sim/cockpit2/gauges/indicators/altitude_ft_pilot OK? MSFS: INDICATED_ALTITUDE. Confirm?
+                                                                                                                                                        
+  Telemetry size (Task #2)                                                                                                                              
+  3. Pitch/roll/heading every point conflicts w/ "min file size". Acceptable: round pitch/roll to 1 decimal (0.1°), heading to integer (1°)? Saves ~50%
+  chars.                                                                                                                                                
+  4. Log mag heading + true heading separately, or true + magvar once in metadata?
+                                                                                                                                                        
+  Phase/event detection (Task #6)                             
+  5. Stall detection: sim stall warning dataref/var (binary), or alpha threshold? Stall warning simpler + cross-sim consistent.                         
+  6. Phase transitions (climb/cruise/descent): rule = VS > +500fpm climb, |VS| < 200 cruise (sustained 60s), VS < -500 descent? OK?                     
+  7. Engine start: log "Engine N started" - X-Plane has per-engine N1/N2 or running flag (sim/flightmodel/engine/ENGN_running[N]). MSFS:                
+  ENG_COMBUSTION:N. Confirm OK?                                                                                                                         
+                                                                                                                                                        
+  Timing (Task #5)                                                                                                                                      
+  8. "Off-block" = first wheel movement OR first engine start, whichever earlier? Or strictly engine start if engines, fallback movement?
+  9. "Final landing" detection: last touchdown where user did NOT take off again within X minutes. What X? 5min? Or detect via engine shutdown after    
+  landing?                                                                                                                                              
+  10. SimBrief EOBT/scheduled arrival: pull at flight start (already have fetch), store in metadata. OK?                                                
+                                                                                                                                                        
+  Touchdown details (Task #3)                                 
+  11. "Where touched down (300m from threshold)": need runway data. Use existing rwy heading derivation logic + rwy DB lookup? Have airport DB but need 
+  runway threshold coords. Use OurAirports runways.csv (similar source)? OK?                                                                            
+                                
+  Versioning                                                                                                                                            
+  12. Schema version scheme: metadata.schema_version: 2 (int bump) or semver string "2.0.0"? Backend dispatches per version. Suggest int simpler.
+  13. Old client still works on backend (shows N/A for missing fields) - confirm: backend should never reject older v1 uploads, just feature-flag the   
+  new analyses.                                                                                                                                         
+                                                                                                                                                        
+  Notifications (Task #8)                                                                                                                               
+  14. Toast lib: win10toast or winotify? Latter more modern + supports buttons. OK?
+  15. Replay mode detection X-Plane: sim/time/is_in_replay dataref. MSFS: no clean equivalent — skip MSFS replay detect, only X-Plane?                  
+                                                                                                                                                        
+  Save-without-upload (Task #7)                                                                                                                         
+  16. Stop button flow change: add 2 buttons "Stop & Upload" / "Stop & Save Only"? Or single stop → dialog asks?                                        
+                                                                                                                                                        
+  Frontend (Task #9-10)         
+  17. Timeline component placement: new tab in FlightAnalysisPanel or extend "General" tab? Suggest new tab "Timeline" cleaner.                         
+  18. Approach analysis upgrade: when v2 file present + has baro alt, recompute approach using baro alt for stabilization checks? Or only use heading   
+  for runway match improvement?                                                                                                                         
+                                                                                                                                                        
+  Answer these, write plan to docs/plans/new-data-logging.md. No code yet.       
+
+
+
+## Answers: 
+#1
+1. i dont want agl initially
+2. You need to determine these, i don't know, but use files: 
+- MSFS: @XPlaneTracker/msfs_simvars.txt
+- X-Plane: XPlaneTracker/datarefs.json
+
+#2
+3. Lets not log pitch, roll on every point, but on events, DO log them (landing, takeoff, stall etc.). Use heading rounded to to decimal places.
+4. Log mag and true heading separately, because magvar will change across the flight
+
+#6
+5. Use the absolute best way in every simulator to determine a stalled condition. It's acceptable, that it'll work better in one sim, don't dumb-down because the other sim's sdk is worse.
+6. I think you can do better than that. Vs < 200 cruise is not cruise, if i am climbing at 100fpm for 10minutes i'll climb 1000ft. Come up with a better solution, and please get my confirmation and approval.
+7. Also, look at the files to determine, use best way in each sim.
+
+#5
+8. first wheel movement OR first engine start, whichever earlier
+9. Not within X minutes, log the last one, when the user shuts down the flight, log it. 
+10. Ok
+
+#3
+11.  Use OurAirports runways.csv
+
+Versioning
+12. semver string, github tag version
+13. confirmed, backend shouldnt reject old ones
+
+Notifications
+14. You can use the one that you think is better for this case, but please make sure there is no performance degradation! Also, update release file for github build to work with packages: @.github/workflows/release.yml
+15. MSFS does not have replay, confirmed.
+
+#7
+16. Single stop dialog asks
+
+Frontend #9-10
+17. General tab, and timeline tab too
+18. When v2 file is present has baro alt, do recompute approach please.
+
+# Task
+Now, create the plan save it to plans dir.
