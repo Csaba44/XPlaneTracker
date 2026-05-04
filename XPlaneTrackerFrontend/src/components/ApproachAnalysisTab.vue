@@ -19,14 +19,14 @@ const overrideInputs = ref([]);
 watch(
   approachRows,
   (rows) => {
-    overrideInputs.value = rows.map((_, i) => overrideInputs.value[i] ?? { courseM: "", gsAngle: "" });
+    overrideInputs.value = rows.map((_, i) => overrideInputs.value[i] ?? { courseT: "", gsAngle: "" });
   },
   { immediate: true },
 );
 
 const applyOverride = (idx) => {
   const o = overrideInputs.value[idx];
-  if (o) overrideRow(idx, o.courseM, o.gsAngle);
+  if (o) overrideRow(idx, o.courseT, o.gsAngle);
 };
 
 const chartRefs = {};
@@ -290,7 +290,7 @@ const getVerticalOptions = (row) => {
             <div class="flex flex-col gap-1">
               <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Approach Course (°T)</span>
               <div class="relative w-28">
-                <input v-model="overrideInputs[idx].courseM" type="number" :placeholder="row.detectedCourseM" class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors" />
+                <input v-model="overrideInputs[idx].courseT" type="number" :placeholder="row.detectedCourseT" class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors" />
                 <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
               </div>
             </div>

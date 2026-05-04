@@ -17,6 +17,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/runways', [RunwayController::class, 'getRunways']);
 
 Route::get('/airport/{icao}/runways', [AirportDataController::class, 'getAirportRunways']);
+Route::get('/airport/{icao}/runways-precise', [AirportDataController::class, 'getOurAirportsRunways']);
 
 Route::middleware('auth:sanctum')->group(function () {
 

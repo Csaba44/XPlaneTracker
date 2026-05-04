@@ -43,4 +43,8 @@ return [
         'token' => env('AIRPORTDB_API_TOKEN'),
     ],
 
+    'ourairports' => [
+        'runways_csv_url' => env('OURAIRPORTS_RUNWAYS_CSV_URL', 'https://davidmegginson.github.io/ourairports-data/runways.csv'),
+    ],
+
 ];

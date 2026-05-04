@@ -16,8 +16,6 @@ const SEG_MIN_DIST_M = 5
 const TRACK_WINDOW_M = 100
 const TRACK_WINDOW_MIN_SAMPLES = 3
 const OUT_OF_CONE_TOLERANCE = 3
-const COURSE_REFINE_MAX_OFFSET_DEG = 1.5
-const COURSE_REFINE_TARGET_NM = 2
 const THRESHOLD_ALIGN_TARGET_NM = 0.5
 const THRESHOLD_ALIGN_MAX_STDDEV_FT = 30
 const THRESHOLD_ALIGN_MAX_SHIFT_FT = 200
@@ -57,47 +55,94 @@ async function findAirportIcao(landing) {
   return bestDist < 15000 ? bestIcao : null
 }
 
-function resolveApproachHeadingT(headingT, headingM) {
-  if (headingT != null) return headingT
-  if (headingM != null) return headingM
-  return null
+function num(v) {
+  if (v == null || v === '') return null
+  const n = parseFloat(v)
+  return isNaN(n) ? null : n
 }
 
-function buildCandidates(runways) {
+function makeEndFromGeometry(ident, thrLat, thrLon, oppLat, oppLon, dispFt, elevFt, storedT, storedM) {
+  if (thrLat == null || thrLon == null || oppLat == null || oppLon == null) return null
+  const computedT = bearing(thrLat, thrLon, oppLat, oppLon)
+  const disp = num(dispFt) || 0
+  const [shLat, shLon] = disp > 0
+    ? destination(thrLat, thrLon, computedT, disp * FT_TO_M)
+    : [thrLat, thrLon]
+  const magVar = (storedT != null && storedM != null) ? storedT - storedM : 0
+  return {
+    ident,
+    thresholdLat: shLat,
+    thresholdLon: shLon,
+    elevationFt: num(elevFt) || 0,
+    approachHeadingT: computedT,
+    approachHeadingM: (computedT - magVar + 360) % 360,
+    magVariation: magVar,
+  }
+}
+
+function makeEndFromStoredHeading(ident, thrLat, thrLon, elevFt, storedT, storedM) {
+  if (thrLat == null || thrLon == null || storedT == null) return null
+  const magVar = (storedM != null) ? storedT - storedM : 0
+  return {
+    ident,
+    thresholdLat: thrLat,
+    thresholdLon: thrLon,
+    elevationFt: num(elevFt) || 0,
+    approachHeadingT: storedT,
+    approachHeadingM: (storedT - magVar + 360) % 360,
+    magVariation: magVar,
+  }
+}
+
+function findPreciseMatch(rwy, preciseList) {
+  if (!preciseList.length) return null
+  return preciseList.find(p =>
+    (p.le_ident === rwy.le_ident && p.he_ident === rwy.he_ident) ||
+    (p.le_ident === rwy.he_ident && p.he_ident === rwy.le_ident)
+  ) || null
+}
+
+function buildEndCandidate(rwy, preciseRow, side) {
+  const isLE = side === 'le'
+  const opp = isLE ? 'he' : 'le'
+  const ident = rwy[`${side}_ident`]
+  const elevFt = rwy[`${side}_elevation_ft`]
+  const dispFt = rwy[`${side}_displaced_threshold_ft`]
+  const storedT = num(rwy[`${side}_heading_degT`])
+  const storedM = num(rwy[`${side}_heading_degM`])
+
+  if (preciseRow) {
+    const pIsLE = preciseRow.le_ident === ident
+    const pSide = pIsLE ? 'le' : 'he'
+    const pOpp = pIsLE ? 'he' : 'le'
+    const thrLat = num(preciseRow[`${pSide}_latitude_deg`])
+    const thrLon = num(preciseRow[`${pSide}_longitude_deg`])
+    const oppLat = num(preciseRow[`${pOpp}_latitude_deg`])
+    const oppLon = num(preciseRow[`${pOpp}_longitude_deg`])
+    const pDispFt = preciseRow[`${pSide}_displaced_threshold_ft`] || dispFt
+    const pElevFt = preciseRow[`${pSide}_elevation_ft`] || elevFt
+    const cand = makeEndFromGeometry(ident, thrLat, thrLon, oppLat, oppLon, pDispFt, pElevFt, storedT, storedM)
+    if (cand) return cand
+  }
+
+  const thrLat = num(rwy[`${side}_latitude_deg`])
+  const thrLon = num(rwy[`${side}_longitude_deg`])
+  const oppLat = num(rwy[`${opp}_latitude_deg`])
+  const oppLon = num(rwy[`${opp}_longitude_deg`])
+  const cand = makeEndFromGeometry(ident, thrLat, thrLon, oppLat, oppLon, dispFt, elevFt, storedT, storedM)
+  if (cand) return cand
+
+  return makeEndFromStoredHeading(ident, thrLat, thrLon, elevFt, storedT, storedM)
+}
+
+function buildCandidates(runways, preciseRunways = []) {
   const cands = []
   for (const rwy of runways) {
-    if (rwy.le_latitude_deg && rwy.le_longitude_deg) {
-      const headingT = rwy.le_heading_degT != null ? parseFloat(rwy.le_heading_degT) : null
-      const headingM = rwy.le_heading_degM != null ? parseFloat(rwy.le_heading_degM) : null
-      const approachHeadingT = resolveApproachHeadingT(headingT, headingM)
-      if (approachHeadingT != null) {
-        cands.push({
-          ident: rwy.le_ident,
-          thresholdLat: parseFloat(rwy.le_latitude_deg),
-          thresholdLon: parseFloat(rwy.le_longitude_deg),
-          elevationFt: parseFloat(rwy.le_elevation_ft) || 0,
-          approachHeadingT,
-          approachHeadingM: headingM ?? approachHeadingT,
-          magVariation: (headingT != null && headingM != null) ? headingT - headingM : 0,
-        })
-      }
-    }
-    if (rwy.he_latitude_deg && rwy.he_longitude_deg) {
-      const headingT = rwy.he_heading_degT != null ? parseFloat(rwy.he_heading_degT) : null
-      const headingM = rwy.he_heading_degM != null ? parseFloat(rwy.he_heading_degM) : null
-      const approachHeadingT = resolveApproachHeadingT(headingT, headingM)
-      if (approachHeadingT != null) {
-        cands.push({
-          ident: rwy.he_ident,
-          thresholdLat: parseFloat(rwy.he_latitude_deg),
-          thresholdLon: parseFloat(rwy.he_longitude_deg),
-          elevationFt: parseFloat(rwy.he_elevation_ft) || 0,
-          approachHeadingT,
-          approachHeadingM: headingM ?? approachHeadingT,
-          magVariation: (headingT != null && headingM != null) ? headingT - headingM : 0,
-        })
-      }
-    }
+    const preciseRow = findPreciseMatch(rwy, preciseRunways)
+    const le = buildEndCandidate(rwy, preciseRow, 'le')
+    const he = buildEndCandidate(rwy, preciseRow, 'he')
+    if (le) cands.push(le)
+    if (he) cands.push(he)
   }
   return cands
 }
@@ -246,43 +291,6 @@ function buildFunnelLines(maxNm) {
   return { left, right }
 }
 
-function signedAngleOffset(b, ref) {
-  let diff = b - ref
-  if (diff > 180) diff -= 360
-  if (diff < -180) diff += 360
-  return diff
-}
-
-function refineRunwayCourse(runway, segment) {
-  if (segment.length < 4) return runway
-
-  const targetM = NM_TO_M * COURSE_REFINE_TARGET_NM
-  const minStartI = Math.floor(segment.length / 2)
-  let accumDist = 0
-  let startI = minStartI
-  for (let i = segment.length - 2; i >= minStartI; i--) {
-    accumDist += distanceM(segment[i][1], segment[i][2], segment[i + 1][1], segment[i + 1][2])
-    if (accumDist >= targetM) { startI = i; break }
-  }
-
-  const offsets = []
-  for (let i = startI; i < segment.length - 1; i++) {
-    const d = distanceM(segment[i][1], segment[i][2], segment[i + 1][1], segment[i + 1][2])
-    if (d < SEG_MIN_DIST_M) continue
-    const b = bearing(segment[i][1], segment[i][2], segment[i + 1][1], segment[i + 1][2])
-    offsets.push(signedAngleOffset(b, runway.approachHeadingT))
-  }
-  if (offsets.length < 3) return runway
-
-  offsets.sort((a, b) => a - b)
-  const medianOffset = offsets[Math.floor(offsets.length / 2)]
-  if (Math.abs(medianOffset) > COURSE_REFINE_MAX_OFFSET_DEG) return runway
-
-  const refinedT = (runway.approachHeadingT + medianOffset + 360) % 360
-  const refinedM = (runway.approachHeadingM + medianOffset + 360) % 360
-  return { ...runway, approachHeadingT: refinedT, approachHeadingM: refinedM }
-}
-
 function refineRunwayThreshold(runway, segment) {
   if (segment.length < 4) return runway
 
@@ -344,7 +352,7 @@ function buildRowData(icao, runway, segment, gsAngle = 3) {
 
   return {
     runwayLabel: `${icao} / RWY ${runway.ident}`,
-    detectedCourseM: Math.round(runway.approachHeadingM),
+    detectedCourseT: runway.approachHeadingT,
     thresholdElevFt: runway.elevationFt,
     gsAngle,
     lateralPoints,
@@ -366,15 +374,19 @@ async function processLanding(landing, data) {
   const icao = await findAirportIcao(landing)
   if (!icao) return { error: 'Airport not identified', runwayLabel: 'Unknown' }
 
-  let airportData
+  let airportData, preciseData
   try {
-    const res = await api.get(`/api/airport/${icao}/runways`)
-    airportData = res.data
+    const [airportRes, preciseRes] = await Promise.all([
+      api.get(`/api/airport/${icao}/runways`),
+      api.get(`/api/airport/${icao}/runways-precise`).catch(() => ({ data: { runways: [] } })),
+    ])
+    airportData = airportRes.data
+    preciseData = preciseRes.data
   } catch {
     return { error: `Failed to fetch data for ${icao}`, runwayLabel: icao }
   }
 
-  const candidates = buildCandidates(airportData.runways || [])
+  const candidates = buildCandidates(airportData.runways || [], preciseData?.runways || [])
   if (!candidates.length) return { error: `No runway data for ${icao}`, runwayLabel: icao }
 
   const runway = identifyRunway(landing, data.path, candidates)
@@ -383,8 +395,7 @@ async function processLanding(landing, data) {
   const segment = computeApproachSegment(landing, data.path, runway)
   if (segment.length < 2) return { error: 'Approach segment too short', runwayLabel: `${icao} / RWY ${runway.ident}` }
 
-  let refined = refineRunwayCourse(runway, segment)
-  refined = refineRunwayThreshold(refined, segment)
+  const refined = refineRunwayThreshold(runway, segment)
   return buildRowData(icao, refined, segment)
 }
 
@@ -413,16 +424,15 @@ export function useApproachAnalysis(flightDataRef) {
     }
   }
 
-  const overrideRow = (rowIdx, courseM, gsAngle) => {
+  const overrideRow = (rowIdx, courseT, gsAngle) => {
     const row = approachRows.value[rowIdx]
     if (!row || row.error || !row._runway || !row._segment) return
 
     const runway = { ...row._runway }
-    const parsedCourseM = courseM !== '' && courseM != null ? parseFloat(courseM) : null
-    if (parsedCourseM != null && !isNaN(parsedCourseM)) {
-      const placeholderM = Math.round(runway.approachHeadingM)
-      const delta = parsedCourseM - placeholderM
-      runway.approachHeadingT = (runway.approachHeadingT + delta + 360) % 360
+    const parsedCourseT = courseT !== '' && courseT != null ? parseFloat(courseT) : null
+    if (parsedCourseT != null && !isNaN(parsedCourseT)) {
+      const delta = parsedCourseT - runway.approachHeadingT
+      runway.approachHeadingT = (parsedCourseT + 360) % 360
       runway.approachHeadingM = (runway.approachHeadingM + delta + 360) % 360
     }
     const angle = (gsAngle !== '' && gsAngle != null && !isNaN(parseFloat(gsAngle))) ? parseFloat(gsAngle) : 3
