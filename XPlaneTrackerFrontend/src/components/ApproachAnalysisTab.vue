@@ -38,6 +38,7 @@ const fillFromRollout = (idx) => {
     return;
   }
   o.courseT = course.toFixed(2);
+  applyOverride(idx);
 };
 
 const chartRefs = {};
@@ -51,6 +52,7 @@ const resetChart = (rowIdx, chartIdx) => {
   chartRefs[rowIdx]?.[chartIdx]?.chart?.dispatchAction({ type: "restore" });
 };
 
+const FT_TO_M = 0.3048;
 const AXIS_LABEL = { color: "#94a3b8", fontSize: 10 };
 const SPLIT_LINE = { lineStyle: { color: "#334155", type: "dashed" } };
 const TOOLTIP_BASE = {
@@ -62,92 +64,100 @@ const TOOLTIP_BASE = {
 const LEGEND = { top: 8, textStyle: { color: "#94a3b8", fontSize: 10 }, itemHeight: 8, itemWidth: 14 };
 const DATAZOOM = [{ type: "inside" }];
 
-const getLateralOptions = (row) => ({
-  backgroundColor: "transparent",
-  grid: { left: "12%", right: "4%", top: "22%", bottom: "14%" },
-  legend: LEGEND,
-  dataZoom: DATAZOOM,
-  xAxis: {
-    type: "value",
-    min: -2900,
-    max: 2900,
-    name: "Deviation (ft)",
-    nameLocation: "center",
-    nameGap: 28,
-    nameTextStyle: { color: "#94a3b8", fontSize: 10 },
-    axisLabel: AXIS_LABEL,
-    axisLine: { lineStyle: { color: "#475569" } },
-    splitLine: SPLIT_LINE,
-  },
-  yAxis: {
-    type: "value",
-    inverse: true,
-    min: 0,
-    max: row.approachMaxNm,
-    name: "NM to Threshold",
-    nameRotate: 90,
-    nameLocation: "center",
-    nameGap: 38,
-    nameTextStyle: { color: "#94a3b8", fontSize: 10 },
-    axisLabel: AXIS_LABEL,
-    axisLine: { lineStyle: { color: "#475569" } },
-    splitLine: SPLIT_LINE,
-  },
-  tooltip: {
-    ...TOOLTIP_BASE,
-    trigger: "axis",
-    axisPointer: {
-      type: "line",
-      axis: "y",
-      lineStyle: { color: "#475569", type: "dashed", width: 1 },
+const getLateralOptions = (row) => {
+  const lateralM = row.lateralPoints.map(p => [parseFloat((p[0] * FT_TO_M).toFixed(1)), p[1]]);
+  const funnelLeftM = row.locFunnelLeft.map(p => [parseFloat((p[0] * FT_TO_M).toFixed(1)), p[1]]);
+  const funnelRightM = row.locFunnelRight.map(p => [parseFloat((p[0] * FT_TO_M).toFixed(1)), p[1]]);
+
+  return {
+    backgroundColor: "transparent",
+    grid: { left: "12%", right: "4%", top: "22%", bottom: "14%" },
+    legend: LEGEND,
+    dataZoom: DATAZOOM,
+    xAxis: {
+      type: "value",
+      min: -900,
+      max: 900,
+      name: "Deviation (m)",
+      nameLocation: "center",
+      nameGap: 28,
+      nameTextStyle: { color: "#94a3b8", fontSize: 10 },
+      axisLabel: AXIS_LABEL,
+      axisLine: { lineStyle: { color: "#475569" } },
+      splitLine: SPLIT_LINE,
     },
-    formatter: (params) => {
-      const yVal = params?.[0]?.axisValue;
-      if (yVal == null || !row.lateralPoints?.length) return "";
-      let point = row.lateralPoints[0];
-      for (const p of row.lateralPoints) {
-        if (Math.abs(p[1] - yVal) < Math.abs(point[1] - yVal)) point = p;
-      }
-      const side = point[0] >= 0 ? "Right" : "Left";
-      return `Dev: ${Math.abs(point[0]).toFixed(0)}ft ${side}<br/>Dist: ${point[1].toFixed(1)} NM`;
+    yAxis: {
+      type: "value",
+      inverse: true,
+      min: 0,
+      max: row.approachMaxNm,
+      name: "NM to Threshold",
+      nameRotate: 90,
+      nameLocation: "center",
+      nameGap: 38,
+      nameTextStyle: { color: "#94a3b8", fontSize: 10 },
+      axisLabel: AXIS_LABEL,
+      axisLine: { lineStyle: { color: "#475569" } },
+      splitLine: SPLIT_LINE,
     },
-  },
-  series: [
-    {
-      name: "Aircraft Path",
-      type: "line",
-      smooth: false,
-      symbol: "none",
-      data: row.lateralPoints,
-      lineStyle: { color: "#a855f7", width: 2 },
-      markLine: {
-        silent: true,
-        symbol: "none",
-        data: [{ xAxis: 0 }],
+    tooltip: {
+      ...TOOLTIP_BASE,
+      trigger: "axis",
+      axisPointer: {
+        type: "line",
+        axis: "y",
         lineStyle: { color: "#475569", type: "dashed", width: 1 },
-        label: { show: false },
+      },
+      formatter: (params) => {
+        const yVal = params?.[0]?.axisValue;
+        if (yVal == null || !lateralM.length) return "";
+        let point = lateralM[0];
+        for (const p of lateralM) {
+          if (Math.abs(p[1] - yVal) < Math.abs(point[1] - yVal)) point = p;
+        }
+        const devM = Math.abs(point[0]);
+        const devFt = Math.round(devM / FT_TO_M);
+        const side = point[0] >= 0 ? "Right" : "Left";
+        return `Dev: ${devM.toFixed(0)}m (${devFt}ft) ${side}<br/>Dist: ${point[1].toFixed(1)} NM`;
       },
     },
-    {
-      name: "LOC ±1 dot",
-      type: "line",
-      smooth: false,
-      symbol: "none",
-      data: row.locFunnelLeft,
-      lineStyle: { color: "#475569", type: "dashed", width: 1 },
-    },
-    {
-      name: "LOC ±1 dot",
-      type: "line",
-      smooth: false,
-      symbol: "none",
-      data: row.locFunnelRight,
-      lineStyle: { color: "#475569", type: "dashed", width: 1 },
-      legendHoverLink: false,
-      tooltip: { show: false },
-    },
-  ],
-});
+    series: [
+      {
+        name: "Aircraft Path",
+        type: "line",
+        smooth: false,
+        symbol: "none",
+        data: lateralM,
+        lineStyle: { color: "#a855f7", width: 2 },
+        markLine: {
+          silent: true,
+          symbol: "none",
+          data: [{ xAxis: 0 }],
+          lineStyle: { color: "#475569", type: "dashed", width: 1 },
+          label: { show: false },
+        },
+      },
+      {
+        name: "LOC ±1 dot",
+        type: "line",
+        smooth: false,
+        symbol: "none",
+        data: funnelLeftM,
+        lineStyle: { color: "#475569", type: "dashed", width: 1 },
+      },
+      {
+        name: "LOC ±1 dot",
+        type: "line",
+        smooth: false,
+        symbol: "none",
+        data: funnelRightM,
+        lineStyle: { color: "#475569", type: "dashed", width: 1 },
+        legendHoverLink: false,
+        tooltip: { show: false },
+      },
+    ],
+  };
+};
 
 const getVerticalOptions = (row) => {
   const maxAlt = Math.max(...row.verticalAlt.map((p) => p[1]));
