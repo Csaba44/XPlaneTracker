@@ -13,6 +13,8 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RunwayController;
 
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/invites/{token}', [AuthController::class, 'getInvite']);
+Route::post('/register', [AuthController::class, 'register']);
 
 Route::get('/runways', [RunwayController::class, 'getRunways']);
 

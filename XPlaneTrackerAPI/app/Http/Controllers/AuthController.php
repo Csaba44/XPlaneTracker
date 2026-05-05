@@ -9,6 +9,57 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends Controller
 {
     /**
+     * Get invite details by token.
+     */
+    public function getInvite($token)
+    {
+        $invite = \App\Models\UserInvite::where('token', $token)->first();
+
+        if (!$invite) {
+            return response()->json(['error' => 'Invalid or expired invite token'], 404);
+        }
+
+        return response()->json([
+            'email' => $invite->email,
+            'name' => $invite->name,
+        ]);
+    }
+
+    /**
+     * Register a new user with an invite token.
+     */
+    public function register(Request $request)
+    {
+        $validated = $request->validate([
+            'token' => 'required|string',
+            'name' => 'required|string|max:255',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $invite = \App\Models\UserInvite::where('token', $validated['token'])->first();
+
+        if (!$invite) {
+            return response()->json(['error' => 'Invalid or expired invite token'], 404);
+        }
+
+        // Check if user already exists (edge case)
+        if (\App\Models\User::where('email', $invite->email)->exists()) {
+            return response()->json(['error' => 'User with this email already exists'], 400);
+        }
+
+        $user = \App\Models\User::create([
+            'name' => $validated['name'],
+            'email' => $invite->email,
+            'password' => \Illuminate\Support\Facades\Hash::make($validated['password']),
+            'is_admin' => $invite->is_admin,
+        ]);
+
+        $invite->delete();
+
+        return response()->json(['message' => 'Registration successful', 'user' => $user], 201);
+    }
+
+    /**
      * Handle an authentication attempt.
      */
     public function login(Request $request)

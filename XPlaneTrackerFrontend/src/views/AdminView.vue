@@ -102,7 +102,7 @@ onMounted(() => {
 
         <div class="flex space-x-4">
           <router-link to="/flights" class="bg-flight-card border border-flight-border hover:border-flight-accent text-white px-4 py-2 rounded-lg transition-colors text-sm font-bold uppercase tracking-wider flex items-center"> <i class="fa-solid fa-arrow-left mr-2"></i> Back to Flights </router-link>
-          <button @click="openAddModal" class="bg-flight-accent hover:bg-sky-400 text-flight-bg px-4 py-2 rounded-lg transition-colors text-sm font-black uppercase tracking-wider flex items-center"><i class="fa-solid fa-plus mr-2"></i> Add User</button>
+          <button @click="openAddModal" class="bg-flight-accent hover:bg-sky-400 text-flight-bg px-4 py-2 rounded-lg transition-colors text-sm font-black uppercase tracking-wider flex items-center"><i class="fa-solid fa-plus mr-2"></i> Invite User</button>
         </div>
       </div>
 
@@ -148,8 +148,8 @@ onMounted(() => {
 
         <form @submit.prevent="saveUser" class="space-y-4">
           <div>
-            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Name</label>
-            <input v-model="formData.name" type="text" required class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
+            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Name <span v-if="!isEditing" class="text-slate-600 lowercase normal-case">(optional)</span></label>
+            <input v-model="formData.name" type="text" :required="isEditing" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
           </div>
 
           <div>
@@ -157,19 +157,14 @@ onMounted(() => {
             <input v-model="formData.email" type="email" required class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
           </div>
 
-          <div>
-            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1"> Password <span v-if="isEditing" class="text-slate-600 lowercase normal-case">(leave blank to keep current)</span> </label>
-            <input v-model="formData.password" type="password" :required="!isEditing" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
-          </div>
-
-          <div class="flex items-center space-x-3 pt-2">
-            <input v-model="formData.is_admin" type="checkbox" :true-value="1" :false-value="0" id="isAdmin" class="w-4 h-4 accent-flight-accent cursor-pointer" />
-            <label for="isAdmin" class="text-sm font-bold text-slate-300 cursor-pointer">Grant Admin Privileges</label>
+          <div v-if="isEditing">
+            <label class="text-[10px] font-bold text-slate-500 uppercase ml-1"> Password <span class="text-slate-600 lowercase normal-case">(leave blank to keep current)</span> </label>
+            <input v-model="formData.password" type="password" class="w-full bg-flight-card border border-flight-border rounded-lg px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" />
           </div>
 
           <div class="flex space-x-3 pt-6">
             <button type="button" @click="closeModal" class="flex-1 bg-flight-card hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition-colors uppercase tracking-widest text-xs border border-flight-border">Cancel</button>
-            <button type="submit" class="flex-1 bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-3 rounded-lg transition-colors shadow-lg uppercase tracking-widest text-xs">Save User</button>
+            <button type="submit" class="flex-1 bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-3 rounded-lg transition-colors shadow-lg uppercase tracking-widest text-xs">{{ isEditing ? "Save User" : "Send Invite" }}</button>
           </div>
         </form>
       </div>
