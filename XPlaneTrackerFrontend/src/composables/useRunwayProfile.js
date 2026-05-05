@@ -16,6 +16,39 @@ const POST_TD_DISPLAY_S = 60
 const POST_LIFTOFF_DISPLAY_S = 30
 const SAMPLE_LOOKBACK = 30
 
+// ICAO Annex 14 aiming-point marking dimensions.
+// Tunable per LDA tier. Each tier defines:
+//   AIM_DISTANCE_FROM_THRESHOLD_M  → x-position of stripe centers from threshold
+//   AIM_STRIPE_LENGTH_M            → along-runway length of each stripe (x dimension)
+//   AIM_STRIPE_WIDTH_M             → across-runway thickness of each stripe (y dimension)
+//   AIM_CENTERLINE_GAP_M           → gap from runway centerline to the INNER edge of each stripe (y)
+const AIM_MARKING_TIERS = {
+  short_lda: {  // LDA 800–1199m
+    AIM_DISTANCE_FROM_THRESHOLD_M: 150,
+    AIM_STRIPE_LENGTH_M:           30,
+    AIM_STRIPE_WIDTH_M:            2,
+    AIM_CENTERLINE_GAP_M:          2.5,
+  },
+  medium_lda: {  // LDA 1200–1499m
+    AIM_DISTANCE_FROM_THRESHOLD_M: 250,
+    AIM_STRIPE_LENGTH_M:           30,
+    AIM_STRIPE_WIDTH_M:            3,
+    AIM_CENTERLINE_GAP_M:          3,
+  },
+  long_lda: {  // LDA 1500–2399m
+    AIM_DISTANCE_FROM_THRESHOLD_M: 300,
+    AIM_STRIPE_LENGTH_M:           50,
+    AIM_STRIPE_WIDTH_M:            4,
+    AIM_CENTERLINE_GAP_M:          4,
+  },
+  xlong_lda: {  // LDA ≥ 2400m
+    AIM_DISTANCE_FROM_THRESHOLD_M: 400,
+    AIM_STRIPE_LENGTH_M:           60,
+    AIM_STRIPE_WIDTH_M:            5,
+    AIM_CENTERLINE_GAP_M:          5,
+  },
+}
+
 function num(v) {
   if (v == null || v === '') return null
   const n = parseFloat(v)
@@ -171,12 +204,12 @@ function findOppositeEnd(matched, candidates) {
   return null
 }
 
-function aimPointDistanceM(ldaM) {
+function aimMarkingSpec(ldaM) {
   if (ldaM == null || ldaM < 800) return null
-  if (ldaM < 1200) return 150
-  if (ldaM < 1500) return 250
-  if (ldaM < 2400) return 300
-  return 400
+  if (ldaM < 1200) return AIM_MARKING_TIERS.short_lda
+  if (ldaM < 1500) return AIM_MARKING_TIERS.medium_lda
+  if (ldaM < 2400) return AIM_MARKING_TIERS.long_lda
+  return AIM_MARKING_TIERS.xlong_lda
 }
 
 async function fetchAirportData(icao) {
@@ -220,7 +253,7 @@ async function processArrival(landing, data) {
   const lengthM = (runway.lengthFt || 0) * FT_TO_M
   const ldaM = Math.max(0, lengthM - runway.displacedFt * FT_TO_M)
   const tdzM = Math.min(900, ldaM)
-  const aimM = aimPointDistanceM(ldaM)
+  const aimSpec = aimMarkingSpec(ldaM)
 
   let segStart = anchorIdx
   for (let i = anchorIdx - 1; i >= 0; i--) {
@@ -250,7 +283,7 @@ async function processArrival(landing, data) {
     lengthM: parseFloat(lengthM.toFixed(0)),
     ldaM: parseFloat(ldaM.toFixed(0)),
     tdzM: parseFloat(tdzM.toFixed(0)),
-    aimM,
+    aimSpec,
     projectedPath: projected,
     markerPoint: [parseFloat(tdProj.along.toFixed(2)), parseFloat(tdProj.lateral.toFixed(2))],
     stats: {
@@ -344,7 +377,7 @@ async function processDeparture(liftoffEvt, data) {
     lengthM: parseFloat(lengthM.toFixed(0)),
     ldaM: parseFloat(toraM.toFixed(0)),
     tdzM: 0,
-    aimM: null,
+    aimSpec: null,
     projectedPath: projected,
     markerPoint: [parseFloat(liftoffProj.along.toFixed(2)), parseFloat(liftoffProj.lateral.toFixed(2))],
     stats: {
@@ -369,26 +402,30 @@ export function buildProfileChartOption(row) {
   const xMax = Math.max(row.ldaM, 1)
 
   const aimSeries = []
-  if (row.aimM != null) {
-    aimSeries.push(
-      {
-        name: 'Aiming point',
-        type: 'line',
-        data: [[row.aimM, halfW * 0.55], [row.aimM, halfW * 0.30]],
-        symbol: 'none',
-        lineStyle: { color: '#e2e8f0', width: 7 },
-        z: 4,
+  if (row.aimSpec) {
+    const a = row.aimSpec
+    const xCenter = a.AIM_DISTANCE_FROM_THRESHOLD_M
+    const xHalf   = a.AIM_STRIPE_LENGTH_M / 2
+    const x0      = xCenter - xHalf
+    const x1      = xCenter + xHalf
+    const yInner  = a.AIM_CENTERLINE_GAP_M
+    const yOuter  = a.AIM_CENTERLINE_GAP_M + a.AIM_STRIPE_WIDTH_M
+    aimSeries.push({
+      name: 'Aiming point',
+      type: 'line',
+      data: [[0, 0]],
+      symbol: 'none',
+      lineStyle: { width: 0, opacity: 0 },
+      markArea: {
+        silent: true,
+        itemStyle: { color: '#e2e8f0', borderColor: '#e2e8f0', borderWidth: 0, opacity: 1 },
+        data: [
+          [{ coord: [x0, yInner] }, { coord: [x1, yOuter] }],
+          [{ coord: [x0, -yOuter] }, { coord: [x1, -yInner] }],
+        ],
       },
-      {
-        type: 'line',
-        data: [[row.aimM, -halfW * 0.30], [row.aimM, -halfW * 0.55]],
-        symbol: 'none',
-        lineStyle: { color: '#e2e8f0', width: 7 },
-        z: 4,
-        legendHoverLink: false,
-        tooltip: { show: false },
-      },
-    )
+      z: 4,
+    })
   }
 
   const tdzSeries = row.tdzM > 0
@@ -425,7 +462,7 @@ export function buildProfileChartOption(row) {
         markerName,
         'Aircraft path',
         ...(row.tdzM > 0 ? [row.mode === 'arrival' ? 'TDZ (0–900m)' : 'TDZ'] : []),
-        ...(row.aimM != null ? ['Aiming point'] : []),
+        ...(row.aimSpec ? ['Aiming point'] : []),
         'Runway edge',
       ],
     },
