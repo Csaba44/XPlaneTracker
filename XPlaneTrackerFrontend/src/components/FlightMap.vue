@@ -615,6 +615,12 @@ watch(showGates, (val) => {
   redrawFeatures();
 });
 
+watch(showEvents, (val) => {
+  localStorage.setItem("flightMap_showEvents", JSON.stringify(val));
+  if (!map) return;
+  map.getPane("eventsPane").style.display = val ? "" : "none";
+});
+
 onMounted(() => {
   initMap();
   if (props.flightData) drawFlight(props.flightData);
@@ -669,6 +675,14 @@ onMounted(() => {
             <i class="fa-solid fa-parking w-3.5 text-center"></i>
             <span>Állóhelyek</span>
             <span v-if="showStands" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          </button>
+
+          <div class="my-0.5 border-t border-slate-700/60"></div>
+
+          <button @click="showEvents = !showEvents" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showEvents ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
+            <i class="fa-solid fa-location-dot w-3.5 text-center"></i>
+            <span>Események</span>
+            <span v-if="showEvents" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
         </div>
       </div>

@@ -6,6 +6,17 @@ const props = defineProps({
 })
 
 const activeFilter = ref('all')
+const expandedItems = ref(new Set())
+
+const toggleExpand = (id) => {
+  const newSet = new Set(expandedItems.value)
+  if (newSet.has(id)) {
+    newSet.delete(id)
+  } else {
+    newSet.add(id)
+  }
+  expandedItems.value = newSet
+}
 
 const rawEvents = computed(() => props.flightData?.events ?? [])
 const rawPhases = computed(() => props.flightData?.phases ?? [])
@@ -65,6 +76,7 @@ const allItems = computed(() => {
   rawPhases.value.forEach((phase, idx) => {
     const cfg = PHASE_META[phase.type] ?? PHASE_META.cruise
     items.push({
+      id: `phase_${phase.start}_${idx}`,
       ts: phase.start,
       kind: 'phase',
       type: phase.type,
@@ -87,6 +99,7 @@ const allItems = computed(() => {
     const engineSuffix = evt.engine != null ? ` #${evt.engine + 1}` : ''
     const flapSuffix = evt.type === 'flaps_set' && evt.index != null ? ` ${evt.index}` : ''
     items.push({
+      id: `event_${evt.ts}_${idx}`,
       ts: evt.ts,
       kind: 'event',
       type: evt.type,
@@ -123,6 +136,23 @@ const displayed = computed(() => {
   return allItems.value
 })
 
+const isAllExpanded = computed(() => {
+  const expandable = displayed.value.filter(i => i.detail || i.duration)
+  if (expandable.length === 0) return false
+  return expandable.every(i => expandedItems.value.has(i.id))
+})
+
+const toggleExpandAll = () => {
+  const expandable = displayed.value.filter(i => i.detail || i.duration)
+  const newSet = new Set(expandedItems.value)
+  if (isAllExpanded.value) {
+    expandable.forEach(i => newSet.delete(i.id))
+  } else {
+    expandable.forEach(i => newSet.add(i.id))
+  }
+  expandedItems.value = newSet
+}
+
 const hasData = computed(() => rawEvents.value.length > 0 || rawPhases.value.length > 0)
 </script>
 
@@ -140,6 +170,18 @@ const hasData = computed(() => rawEvents.value.length > 0 || rawPhases.value.len
             : 'border-transparent text-flight-muted hover:text-white hover:bg-flight-card/50',
         ]"
       >{{ f.label }}</button>
+
+      <div v-if="hasData" class="w-px h-4 bg-flight-border/60 mx-1"></div>
+
+      <button
+        v-if="hasData"
+        @click="toggleExpandAll"
+        class="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all border border-transparent text-flight-muted hover:text-white hover:bg-flight-card/50 flex items-center gap-1.5"
+        title="Toggle Expand All"
+      >
+        <i :class="['fa-solid', isAllExpanded ? 'fa-compress' : 'fa-expand']"></i>
+        {{ isAllExpanded ? 'Collapse All' : 'Expand All' }}
+      </button>
 
       <span v-if="hasData" class="ml-auto text-[10px] text-slate-600 font-mono">
         {{ displayed.length }} item{{ displayed.length !== 1 ? 's' : '' }}
@@ -163,9 +205,13 @@ const hasData = computed(() => rawEvents.value.length > 0 || rawPhases.value.len
 
         <div class="space-y-0.5">
           <div
-            v-for="(item, idx) in displayed"
-            :key="idx"
-            class="relative flex items-start gap-4 pl-10 py-2.5 rounded-xl group hover:bg-flight-card/50 transition-colors"
+            v-for="item in displayed"
+            :key="item.id"
+            @click="toggleExpand(item.id)"
+            :class="[
+              'relative flex items-start gap-4 pl-10 py-2.5 rounded-xl group transition-colors cursor-pointer',
+              expandedItems.has(item.id) ? 'bg-flight-card' : 'hover:bg-flight-card/50'
+            ]"
           >
             <div
               :class="[
@@ -193,11 +239,17 @@ const hasData = computed(() => rawEvents.value.length > 0 || rawPhases.value.len
                 <span class="font-mono text-[10px] text-slate-600 ml-auto flex-shrink-0">{{ fmtTime(item.ts) }}</span>
               </div>
 
-              <p v-if="item.detail" class="text-[11px] text-slate-400 font-mono mt-1 leading-relaxed">{{ item.detail }}</p>
-
-              <p v-if="item.duration" class="text-[10px] text-slate-600 mt-0.5">
-                Duration: {{ fmtDuration(item.duration) }}
-              </p>
+              <div v-if="expandedItems.has(item.id)" class="mt-2 space-y-1">
+                <p v-if="item.detail" class="text-[11px] text-slate-400 font-mono leading-relaxed">{{ item.detail }}</p>
+                <p v-if="item.duration" class="text-[10px] text-slate-600">
+                  Duration: {{ fmtDuration(item.duration) }}
+                </p>
+              </div>
+              <div v-else-if="item.detail || item.duration" class="mt-1.5">
+                <div class="inline-flex items-center justify-center bg-flight-bg border border-flight-border text-slate-500 rounded-full px-2 py-0.5 shadow-sm transition-colors group-hover:border-flight-accent/40 group-hover:text-flight-accent/70">
+                  <i class="fa-solid fa-ellipsis text-[10px]"></i>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -205,3 +257,4 @@ const hasData = computed(() => rawEvents.value.length > 0 || rawPhases.value.len
     </div>
   </div>
 </template>
+
