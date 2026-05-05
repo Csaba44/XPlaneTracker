@@ -19,6 +19,8 @@ const props = defineProps({
 const { approachRows, isLoading, overrideRow, getRolloutCourse } = useApproachAnalysis(toRef(props, "flightData"));
 const { arrivals: profileRows } = useRunwayProfile(toRef(props, "flightData"));
 
+const showEvents = ref(true);
+
 const fmtKt = (v) => v != null ? `${Math.round(v)} kts` : '—';
 const fmtFpm = (v) => v != null ? `${v} fpm` : '—';
 const fmtG = (v) => v != null ? `${v}G` : '—';
@@ -84,6 +86,28 @@ const getLateralOptions = (row) => {
   const lateralM = row.lateralPoints.map(p => [parseFloat((p[0] * FT_TO_M).toFixed(1)), p[1]]);
   const funnelLeftM = row.locFunnelLeft.map(p => [parseFloat((p[0] * FT_TO_M).toFixed(1)), p[1]]);
   const funnelRightM = row.locFunnelRight.map(p => [parseFloat((p[0] * FT_TO_M).toFixed(1)), p[1]]);
+
+  const eventSeries = [];
+  if (showEvents.value && row.approachEvents?.length) {
+    eventSeries.push({
+      name: "Events",
+      type: "scatter",
+      data: row.approachEvents.map(e => ({
+        value: [parseFloat((e.devFt * FT_TO_M).toFixed(1)), e.nm],
+        eventData: e
+      })),
+      symbolSize: 8,
+      itemStyle: { color: "#f59e0b", borderColor: "#fff", borderWidth: 1 },
+      z: 10,
+      tooltip: {
+        trigger: "item",
+        formatter: (p) => {
+          const e = p.data.eventData;
+          return `${e.label}<br/>Dist: ${e.nm.toFixed(1)} NM<br/>Alt: ${e.alt} ft<br/>Speed: ${e.ias} kts`;
+        }
+      }
+    });
+  }
 
   return {
     backgroundColor: "transparent",
@@ -171,6 +195,7 @@ const getLateralOptions = (row) => {
         legendHoverLink: false,
         tooltip: { show: false },
       },
+      ...eventSeries
     ],
   };
 };
@@ -180,6 +205,29 @@ const getVerticalOptions = (row) => {
   const altMax = Math.ceil((maxAlt + 1000) / 500) * 500;
   const maxGs = Math.max(...row.verticalGs.map((p) => p[1]));
   const gsMax = Math.ceil((maxGs + 30) / 50) * 50;
+
+  const eventSeries = [];
+  if (showEvents.value && row.approachEvents?.length) {
+    eventSeries.push({
+      name: "Events",
+      type: "scatter",
+      yAxisIndex: 0,
+      data: row.approachEvents.map(e => ({
+        value: [e.nm, e.alt],
+        eventData: e
+      })),
+      symbolSize: 8,
+      itemStyle: { color: "#f59e0b", borderColor: "#fff", borderWidth: 1 },
+      z: 10,
+      tooltip: {
+        trigger: "item",
+        formatter: (p) => {
+          const e = p.data.eventData;
+          return `${e.label}<br/>Dist: ${e.nm.toFixed(1)} NM<br/>Alt: ${e.alt} ft<br/>Speed: ${e.ias} kts`;
+        }
+      }
+    });
+  }
 
   return {
     backgroundColor: "transparent",
@@ -293,6 +341,7 @@ const getVerticalOptions = (row) => {
         data: row.gsMinusDot,
         lineStyle: { color: "#22c55e", type: "dashed", width: 1 },
       },
+      ...eventSeries
     ],
   };
 };
@@ -323,25 +372,31 @@ const getVerticalOptions = (row) => {
         </div>
 
         <template v-else>
-          <div v-if="overrideInputs[idx]" class="flex items-end gap-3">
-            <div class="flex flex-col gap-1">
-              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Approach Course (°T)</span>
-              <div class="flex items-center gap-2">
-                <div class="relative w-28">
-                  <input v-model="overrideInputs[idx].courseT" type="number" :placeholder="row.detectedCourseT" class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors" />
+          <div class="flex justify-between items-end gap-3 flex-wrap">
+            <div v-if="overrideInputs[idx]" class="flex items-end gap-3">
+              <div class="flex flex-col gap-1">
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Approach Course (°T)</span>
+                <div class="flex items-center gap-2">
+                  <div class="relative w-28">
+                    <input v-model="overrideInputs[idx].courseT" type="number" :placeholder="row.detectedCourseT" class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors" />
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
+                  </div>
+                  <button @click="fillFromRollout(idx)" title="Compute course from post-touchdown rollout track" class="bg-flight-card hover:bg-slate-800 text-white font-bold py-1.5 px-3 rounded-lg transition-colors uppercase tracking-widest text-[9px] border border-flight-border whitespace-nowrap"><i class="fa-solid fa-route mr-1"></i>From Rollout</button>
+                </div>
+              </div>
+              <div class="flex flex-col gap-1">
+                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Glideslope</span>
+                <div class="relative w-24">
+                  <input v-model="overrideInputs[idx].gsAngle" type="number" step="0.1" placeholder="3.0" class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors" />
                   <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
                 </div>
-                <button @click="fillFromRollout(idx)" title="Compute course from post-touchdown rollout track" class="bg-flight-card hover:bg-slate-800 text-white font-bold py-1.5 px-3 rounded-lg transition-colors uppercase tracking-widest text-[9px] border border-flight-border whitespace-nowrap"><i class="fa-solid fa-route mr-1"></i>From Rollout</button>
               </div>
+              <button @click="applyOverride(idx)" class="bg-flight-card hover:bg-slate-800 text-white font-bold py-1.5 px-3 rounded-lg transition-colors uppercase tracking-widest text-[9px] border border-flight-border self-end">Apply</button>
             </div>
-            <div class="flex flex-col gap-1">
-              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest ml-1">Glideslope</span>
-              <div class="relative w-24">
-                <input v-model="overrideInputs[idx].gsAngle" type="number" step="0.1" placeholder="3.0" class="w-full bg-flight-card border border-flight-border rounded-lg pl-3 pr-7 py-1.5 text-white text-xs font-mono focus:outline-none focus:border-flight-accent transition-colors" />
-                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs font-mono pointer-events-none">°</span>
-              </div>
-            </div>
-            <button @click="applyOverride(idx)" class="bg-flight-card hover:bg-slate-800 text-white font-bold py-1.5 px-3 rounded-lg transition-colors uppercase tracking-widest text-[9px] border border-flight-border self-end">Apply</button>
+            <div v-else></div>
+            <button @click="showEvents = !showEvents" :class="['font-bold py-1.5 px-3 rounded-lg transition-colors uppercase tracking-widest text-[9px] border whitespace-nowrap', showEvents ? 'bg-flight-accent/20 text-flight-accent border-flight-accent/50' : 'bg-flight-card hover:bg-slate-800 text-slate-400 border-flight-border']">
+              <i class="fa-solid fa-tags mr-1"></i> {{ showEvents ? 'Events: On' : 'Events: Off' }}
+            </button>
           </div>
 
           <div class="flex gap-4" style="min-height: 400px">

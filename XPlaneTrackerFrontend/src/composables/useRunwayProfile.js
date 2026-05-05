@@ -162,6 +162,28 @@ function buildCandidates(runways, precise = []) {
   return cands
 }
 
+function smoothPath(path, windowSize = 5) {
+  if (!path || path.length < windowSize * 2) return path
+  const smoothed = []
+  const half = Math.floor(windowSize / 2)
+  for (let i = 0; i < path.length; i++) {
+    if (i === 0 || i === path.length - 1) {
+      smoothed.push([path[i][0], path[i][1]])
+      continue
+    }
+    let sumAlong = 0, sumLat = 0, count = 0
+    const start = Math.max(0, i - half)
+    const end = Math.min(path.length - 1, i + half)
+    for (let j = start; j <= end; j++) {
+      sumAlong += path[j][0]
+      sumLat += path[j][1]
+      count++
+    }
+    smoothed.push([parseFloat((sumAlong / count).toFixed(2)), parseFloat((sumLat / count).toFixed(2))])
+  }
+  return smoothed
+}
+
 function projectPoint(lat, lon, runway) {
   const dM = distanceM(runway.thresholdLat, runway.thresholdLon, lat, lon)
   if (dM < 0.01) return { along: 0, lateral: 0 }
@@ -281,7 +303,7 @@ async function processArrival(landing, data) {
     displacedM: parseFloat(displacedM.toFixed(0)),
     tdzM: parseFloat(tdzM.toFixed(0)),
     aimSpec,
-    projectedPath: projected,
+    projectedPath: smoothPath(projected),
     markerPoint: [parseFloat(tdProj.along.toFixed(2)), parseFloat(tdProj.lateral.toFixed(2))],
     stats: {
       rateFpm: landing.fpm,
@@ -382,7 +404,7 @@ async function processDeparture(liftoffEvt, data) {
     displacedM: parseFloat(displacedM.toFixed(0)),
     tdzM: 0,
     aimSpec: null,
-    projectedPath: projected,
+    projectedPath: smoothPath(projected),
     markerPoint: [parseFloat(liftoffProj.along.toFixed(2)), parseFloat(liftoffProj.lateral.toFixed(2))],
     stats: {
       liftoffSpeedKt: liftoffEvt.ias,

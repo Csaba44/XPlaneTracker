@@ -361,7 +361,7 @@ function refineRunwayThreshold(runway, segment) {
   return { ...runway, thresholdLat: newLat, thresholdLon: newLon }
 }
 
-function buildRowData(icao, runway, segment, gsAngle = 3) {
+function buildRowData(icao, runway, segment, gsAngle = 3, data = null) {
   const lateralPoints = computeLateralPoints(segment, runway)
   const approachMaxNm = Math.max(Math.ceil(Math.max(...lateralPoints.map(p => p[1])) * 10) / 10, 8)
 
@@ -379,6 +379,39 @@ function buildRowData(icao, runway, segment, gsAngle = 3) {
     return [parseFloat(nm.toFixed(3)), p[4] || 0]
   })
 
+  const approachEvents = []
+  if (data?.events) {
+    const tStart = segment[0][0]
+    const tEnd = segment[segment.length - 1][0]
+    const relevantEvents = data.events.filter(e => e.ts >= tStart && e.ts <= tEnd && (e.type === 'gear_down' || e.type === 'flaps_set'))
+    
+    for (const e of relevantEvents) {
+      let closestPt = segment[0]
+      let minDiff = Infinity
+      for (const p of segment) {
+        const diff = Math.abs(p[0] - e.ts)
+        if (diff < minDiff) { minDiff = diff; closestPt = p }
+      }
+      
+      const nm = distanceM(runway.thresholdLat, runway.thresholdLon, closestPt[1], closestPt[2]) / NM_TO_M
+      const reverseHdg = (runway.approachHeadingT + 180) % 360
+      const brgFromThr = bearing(runway.thresholdLat, runway.thresholdLon, closestPt[1], closestPt[2])
+      const relAngle = (reverseHdg - brgFromThr + 360) % 360
+      const distM_val = distanceM(runway.thresholdLat, runway.thresholdLon, closestPt[1], closestPt[2])
+      const devFt = distM_val * Math.sin(relAngle * Math.PI / 180) * M_TO_FT
+      
+      approachEvents.push({
+        type: e.type,
+        ts: e.ts,
+        label: e.type === 'gear_down' ? 'Gear Down' : `Flaps ${e.index}`,
+        nm: parseFloat(nm.toFixed(3)),
+        devFt: parseFloat(devFt.toFixed(1)),
+        alt: closestPt[3],
+        ias: closestPt[4] || e.ias || 0
+      })
+    }
+  }
+
   return {
     runwayLabel: `${icao} / RWY ${runway.ident}`,
     detectedCourseT: runway.approachHeadingT,
@@ -393,8 +426,10 @@ function buildRowData(icao, runway, segment, gsAngle = 3) {
     locFunnelLeft: left,
     locFunnelRight: right,
     approachMaxNm,
+    approachEvents,
     _runway: runway,
     _segment: segment,
+    _data: data,
     error: null,
   }
 }
@@ -425,7 +460,7 @@ async function processLanding(landing, data) {
   if (segment.length < 2) return { error: 'Approach segment too short', runwayLabel: `${icao} / RWY ${runway.ident}` }
 
   const refined = refineRunwayThreshold(runway, segment)
-  const row = buildRowData(icao, refined, segment)
+  const row = buildRowData(icao, refined, segment, 3, data)
   row._landing = landing
   return row
 }
@@ -469,7 +504,7 @@ export function useApproachAnalysis(flightDataRef) {
     const angle = (gsAngle !== '' && gsAngle != null && !isNaN(parseFloat(gsAngle))) ? parseFloat(gsAngle) : 3
 
     const icao = row.runwayLabel.split(' / ')[0]
-    const newData = buildRowData(icao, runway, row._segment, angle)
+    const newData = buildRowData(icao, runway, row._segment, angle, row._data)
     approachRows.value[rowIdx] = { ...newData, _runway: row._runway, _segment: row._segment, _landing: row._landing }
   }
 
