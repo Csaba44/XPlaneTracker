@@ -16,6 +16,15 @@ const POST_TD_DISPLAY_S = 60
 const POST_LIFTOFF_DISPLAY_S = 30
 const SAMPLE_LOOKBACK = 30
 
+const DISPLACED_THRESHOLD_STYLE = {
+  BAR_THICKNESS_M: 3,       // Thickness of the solid white threshold bar at x=0
+  ARROW_LENGTH_M: 20,       // Length of each arrow along the displaced area
+  ARROW_SPAN_M: 10,         // Width of the arrow head
+  ARROW_SPACING_M: 30,      // Distance between consecutive arrows
+  LINE_WIDTH: 2,            // Stroke width for the markings
+  COLOR: '#cbd5e1'          // Color of the markings (matching runway edge)
+}
+
 // ICAO Annex 14 aiming-point marking dimensions.
 // Tunable per LDA tier. Each tier defines:
 //   AIM_DISTANCE_FROM_THRESHOLD_M  → x-position of stripe centers from threshold
@@ -189,21 +198,6 @@ function identifyRunway(anchorLat, anchorLon, anchorIdx, path, candidates) {
   return best
 }
 
-function findOppositeEnd(matched, candidates) {
-  const oppT = (matched.approachHeadingT + 180) % 360
-  const expectedM = (matched.lengthFt || 0) * FT_TO_M
-  let best = null, bestDelta = Infinity
-  for (const c of candidates) {
-    if (c.ident === matched.ident) continue
-    if (angleDiff(c.approachHeadingT, oppT) > 10) continue
-    const dM = distanceM(c.physicalLat, c.physicalLon, matched.physicalLat, matched.physicalLon)
-    const delta = Math.abs(dM - expectedM)
-    if (delta < bestDelta) { bestDelta = delta; best = c }
-  }
-  if (best && (expectedM === 0 || bestDelta < Math.max(200, expectedM * 0.1))) return best
-  return null
-}
-
 function aimMarkingSpec(ldaM) {
   if (ldaM == null || ldaM < 800) return null
   if (ldaM < 1200) return AIM_MARKING_TIERS.short_lda
@@ -254,11 +248,13 @@ async function processArrival(landing, data) {
   const ldaM = Math.max(0, lengthM - runway.displacedFt * FT_TO_M)
   const tdzM = Math.min(900, ldaM)
   const aimSpec = aimMarkingSpec(ldaM)
+  const displacedM = runway.displacedFt * FT_TO_M
 
   let segStart = anchorIdx
   for (let i = anchorIdx - 1; i >= 0; i--) {
     const distNm = distanceM(runway.thresholdLat, runway.thresholdLon, data.path[i][1], data.path[i][2]) / NM_TO_M
     if (distNm > APPROACH_DISPLAY_NM) break
+    if (data.path[i][3] - runway.elevationFt > 2000) break
     segStart = i
   }
   let segEnd = anchorIdx
@@ -282,6 +278,7 @@ async function processArrival(landing, data) {
     widthM: parseFloat(widthM.toFixed(1)),
     lengthM: parseFloat(lengthM.toFixed(0)),
     ldaM: parseFloat(ldaM.toFixed(0)),
+    displacedM: parseFloat(displacedM.toFixed(0)),
     tdzM: parseFloat(tdzM.toFixed(0)),
     aimSpec,
     projectedPath: projected,
@@ -317,17 +314,23 @@ async function processDeparture(liftoffEvt, data) {
   const matched = identifyRunway(liftoffLat, liftoffLon, idx, data.path, candidates)
   if (!matched) return { error: 'Could not identify departure runway', runwayLabel: icao, mode: 'departure' }
 
-  const takeoffEnd = findOppositeEnd(matched, candidates)
-  if (!takeoffEnd) return { error: 'Could not locate takeoff end of runway', runwayLabel: `${icao} / RWY ${matched.ident}`, mode: 'departure' }
+  const takeoffEnd = {
+    ...matched,
+    thresholdLat: matched.physicalLat,
+    thresholdLon: matched.physicalLon,
+    displacedFt: 0
+  }
 
   const widthM = (takeoffEnd.widthFt ? takeoffEnd.widthFt * FT_TO_M : DEFAULT_WIDTH_M)
   const lengthM = (takeoffEnd.lengthFt || 0) * FT_TO_M
   const toraM = lengthM
+  const displacedM = (matched.displacedFt || 0) * FT_TO_M
 
   const rollStart = findTakeoffRollStart(idx, data.path)
   let segEnd = idx
   for (let i = idx + 1; i < data.path.length; i++) {
     if (data.path[i][0] - liftoffEvt.ts > POST_LIFTOFF_DISPLAY_S) break
+    if (data.path[i][3] - takeoffEnd.elevationFt > 2000) break
     segEnd = i
   }
   const segment = data.path.slice(rollStart, segEnd + 1)
@@ -376,6 +379,7 @@ async function processDeparture(liftoffEvt, data) {
     widthM: parseFloat(widthM.toFixed(1)),
     lengthM: parseFloat(lengthM.toFixed(0)),
     ldaM: parseFloat(toraM.toFixed(0)),
+    displacedM: parseFloat(displacedM.toFixed(0)),
     tdzM: 0,
     aimSpec: null,
     projectedPath: projected,
@@ -399,12 +403,19 @@ export function buildProfileChartOption(row) {
   const w = row.widthM
   const halfW = w / 2
   const padY = Math.max(22, halfW * 0.5)
-  const xMax = Math.max(row.ldaM, 1)
+  
+  const dispM = row.displacedM || 0
+  const isDeparture = row.mode === 'departure'
+  
+  const startX = isDeparture ? 0 : -dispM
+  const thresholdX = isDeparture ? dispM : 0
+  const xMin = startX
+  const xMax = isDeparture ? row.ldaM : Math.max(row.ldaM, 1)
 
   const aimSeries = []
   if (row.aimSpec) {
     const a = row.aimSpec
-    const xCenter = a.AIM_DISTANCE_FROM_THRESHOLD_M
+    const xCenter = thresholdX + a.AIM_DISTANCE_FROM_THRESHOLD_M
     const xHalf   = a.AIM_STRIPE_LENGTH_M / 2
     const x0      = xCenter - xHalf
     const x1      = xCenter + xHalf
@@ -428,6 +439,45 @@ export function buildProfileChartOption(row) {
     })
   }
 
+  const displacedSeries = []
+  if (dispM > 0) {
+    displacedSeries.push({
+      name: 'Threshold Bar',
+      type: 'line',
+      data: [[thresholdX, halfW], [thresholdX, -halfW]],
+      symbol: 'none',
+      lineStyle: { color: DISPLACED_THRESHOLD_STYLE.COLOR, width: DISPLACED_THRESHOLD_STYLE.BAR_THICKNESS_M },
+      z: 3,
+    })
+
+    let arrowX = thresholdX - DISPLACED_THRESHOLD_STYLE.ARROW_SPACING_M
+    while (arrowX >= startX + DISPLACED_THRESHOLD_STYLE.ARROW_LENGTH_M) {
+      const headX = arrowX
+      const tailX = arrowX - DISPLACED_THRESHOLD_STYLE.ARROW_LENGTH_M
+      const spanHalf = DISPLACED_THRESHOLD_STYLE.ARROW_SPAN_M / 2
+
+      displacedSeries.push({
+        name: 'Displaced Arrow',
+        type: 'line',
+        data: [[tailX, 0], [headX, 0]],
+        symbol: 'none',
+        lineStyle: { color: DISPLACED_THRESHOLD_STYLE.COLOR, width: DISPLACED_THRESHOLD_STYLE.LINE_WIDTH },
+        z: 3,
+      })
+
+      displacedSeries.push({
+        name: 'Displaced Arrow Head',
+        type: 'line',
+        data: [[headX - DISPLACED_THRESHOLD_STYLE.ARROW_SPAN_M, spanHalf], [headX, 0], [headX - DISPLACED_THRESHOLD_STYLE.ARROW_SPAN_M, -spanHalf]],
+        symbol: 'none',
+        lineStyle: { color: DISPLACED_THRESHOLD_STYLE.COLOR, width: DISPLACED_THRESHOLD_STYLE.LINE_WIDTH },
+        z: 3,
+      })
+
+      arrowX -= DISPLACED_THRESHOLD_STYLE.ARROW_SPACING_M
+    }
+  }
+
   const tdzSeries = row.tdzM > 0
     ? [{
         name: row.mode === 'arrival' ? 'TDZ (0–900m)' : 'TDZ',
@@ -439,8 +489,8 @@ export function buildProfileChartOption(row) {
           silent: true,
           itemStyle: { color: 'rgba(34,197,94,0.18)', borderColor: 'rgba(34,197,94,0.45)', borderWidth: 1 },
           data: [[
-            { coord: [0, -halfW] },
-            { coord: [row.tdzM, halfW] },
+            { coord: [thresholdX, -halfW] },
+            { coord: [thresholdX + row.tdzM, halfW] },
           ]],
         },
         z: 1,
@@ -464,6 +514,7 @@ export function buildProfileChartOption(row) {
         ...(row.tdzM > 0 ? [row.mode === 'arrival' ? 'TDZ (0–900m)' : 'TDZ'] : []),
         ...(row.aimSpec ? ['Aiming point'] : []),
         'Runway edge',
+        ...(dispM > 0 ? ['Threshold Bar', 'Displaced Arrow', 'Displaced Arrow Head'] : []),
       ],
     },
     tooltip: {
@@ -484,7 +535,7 @@ export function buildProfileChartOption(row) {
     },
     xAxis: {
       type: 'value',
-      min: 0,
+      min: xMin,
       max: xMax,
       interval: 1000,
       axisLabel: {
@@ -517,11 +568,12 @@ export function buildProfileChartOption(row) {
       {
         name: 'Runway edge',
         type: 'line',
-        data: [[0, halfW], [xMax, halfW], [xMax, -halfW], [0, -halfW], [0, halfW]],
+        data: [[startX, halfW], [xMax, halfW], [xMax, -halfW], [startX, -halfW], [startX, halfW]],
         symbol: 'none',
         lineStyle: { color: '#cbd5e1', width: 2 },
         z: 2,
       },
+      ...displacedSeries,
       {
         name: 'Aircraft path',
         type: 'line',

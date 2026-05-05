@@ -365,52 +365,52 @@ const getVerticalOptions = (row) => {
               </div>
             </div>
           </div>
-
-          <div v-if="profileRows[idx] && !profileRows[idx].error" class="bg-flight-sidebar border border-flight-border rounded-xl p-4 flex flex-col gap-3">
-            <div class="flex items-center justify-between">
-              <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Runway Profile</span>
-              <span class="text-[9px] text-slate-600 font-mono">
-                {{ profileRows[idx].lengthM.toLocaleString() }}m × {{ profileRows[idx].widthM }}m
-              </span>
-            </div>
-            <div style="height: 220px">
-              <v-chart style="width: 100%; height: 100%" :option="buildProfileChartOption(profileRows[idx])" autoresize />
-            </div>
-            <div class="grid grid-cols-7 gap-3 pt-3 border-t border-flight-border/60">
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Rate</span>
-                <span class="text-sm font-bold text-white font-mono">{{ fmtFpm(profileRows[idx].stats.rateFpm) }}</span>
-              </div>
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">G-Force</span>
-                <span class="text-sm font-bold text-white font-mono">{{ fmtG(profileRows[idx].stats.gForce) }}</span>
-              </div>
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Runway</span>
-                <span class="text-sm font-bold text-white font-mono">RW{{ profileRows[idx].runwayIdent }}</span>
-              </div>
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">TD Point</span>
-                <span class="text-sm font-bold text-white font-mono">{{ fmtM(profileRows[idx].stats.tdPointM) }}</span>
-              </div>
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Speed</span>
-                <span class="text-sm font-bold text-white font-mono">{{ fmtKt(profileRows[idx].stats.iasKt ?? profileRows[idx].stats.gsKt) }}</span>
-              </div>
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Pitch</span>
-                <span class="text-sm font-bold text-white font-mono">{{ fmtDeg(profileRows[idx].stats.pitch) }}</span>
-              </div>
-              <div class="flex flex-col gap-0.5">
-                <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Roll</span>
-                <span class="text-sm font-bold text-white font-mono">{{ fmtRoll(profileRows[idx].stats.roll) }}</span>
-              </div>
-            </div>
-          </div>
-          <div v-else-if="profileRows[idx] && profileRows[idx].error" class="bg-flight-sidebar border border-flight-border rounded-xl p-4 flex items-center justify-center">
-            <p class="text-amber-400/80 text-xs font-mono">Runway profile unavailable: {{ profileRows[idx].error }}</p>
-          </div>
         </template>
+
+        <div v-if="profileRows[idx] && !profileRows[idx].error" class="bg-flight-sidebar border border-flight-border rounded-xl p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <span class="text-[9px] font-black uppercase tracking-widest text-slate-500">Runway Profile</span>
+            <span class="text-[9px] text-slate-600 font-mono">
+              {{ profileRows[idx].lengthM.toLocaleString() }}m × {{ profileRows[idx].widthM }}m
+            </span>
+          </div>
+          <div style="height: 220px">
+            <v-chart style="width: 100%; height: 100%" :option="buildProfileChartOption(profileRows[idx])" autoresize />
+          </div>
+          <div class="grid grid-cols-7 gap-3 pt-3 border-t border-flight-border/60">
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Rate</span>
+              <span class="text-sm font-bold text-white font-mono">{{ fmtFpm(profileRows[idx].stats.rateFpm) }}</span>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">G-Force</span>
+              <span class="text-sm font-bold text-white font-mono">{{ fmtG(profileRows[idx].stats.gForce) }}</span>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Runway</span>
+              <span class="text-sm font-bold text-white font-mono">RW{{ profileRows[idx].runwayIdent }}</span>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">TD Point</span>
+              <span class="text-sm font-bold text-white font-mono">{{ fmtM(profileRows[idx].stats.tdPointM) }}</span>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Speed</span>
+              <span class="text-sm font-bold text-white font-mono">{{ fmtKt(profileRows[idx].stats.iasKt ?? profileRows[idx].stats.gsKt) }}</span>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Pitch</span>
+              <span class="text-sm font-bold text-white font-mono">{{ fmtDeg(profileRows[idx].stats.pitch) }}</span>
+            </div>
+            <div class="flex flex-col gap-0.5">
+              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Roll</span>
+              <span class="text-sm font-bold text-white font-mono">{{ fmtRoll(profileRows[idx].stats.roll) }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-else-if="profileRows[idx] && profileRows[idx].error" class="bg-flight-sidebar border border-flight-border rounded-xl p-4 flex items-center justify-center">
+          <p class="text-amber-400/80 text-xs font-mono">Runway profile unavailable: {{ profileRows[idx].error }}</p>
+        </div>
       </div>
     </template>
   </div>
