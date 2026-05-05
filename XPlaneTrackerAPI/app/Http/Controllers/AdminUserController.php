@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\View;
 
 class AdminUserController extends Controller
 {
@@ -42,19 +43,12 @@ class AdminUserController extends Controller
 
         $domain = env('APP_URL', 'https://csabolanta.hu');
         $registerUrl = "{$domain}/register?token={$token}";
-
         $inviterName = $request->user()->name;
 
-        $html = "
-        <div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333;\">
-            <h2>You've been invited to Csabolanta!</h2>
-            <p><strong>{$inviterName}</strong> has invited you to join Csabolanta.</p>
-            <p>Click the button below to create your account and set your password:</p>
-            <div style=\"margin: 30px 0;\">
-                <a href=\"{$registerUrl}\" style=\"display: inline-block; padding: 12px 24px; background-color: #38bdf8; color: #1c222d; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;\">Create Account</a>
-            </div>
-            <p style=\"margin-top: 20px; font-size: 12px; color: #666;\">If the button doesn't work, copy and paste this link into your browser: <br> <a href=\"{$registerUrl}\" style=\"color: #38bdf8;\">{$registerUrl}</a></p>
-        </div>";
+        $html = View::make('emails.invite', [
+            'inviterName' => $inviterName,
+            'registerUrl' => $registerUrl
+        ])->render();
 
         \Illuminate\Support\Facades\Http::withToken(config('services.resend.key'))->post('https://api.resend.com/emails', [
             'from' => 'Csabolanta Invites <onboarding@csabolanta.hu>',
@@ -118,6 +112,46 @@ class AdminUserController extends Controller
         }
 
         $user->delete();
+
+        return response()->json(null, 204);
+    }
+
+    public function getInvites(Request $request)
+    {
+        if (!$request->user() || !$request->user()->is_admin) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $invites = \App\Models\UserInvite::with('inviter')->orderBy('created_at', 'desc')->get();
+        return response()->json($invites);
+    }
+
+    public function updateInvite(Request $request, \App\Models\UserInvite $invite)
+    {
+        if (!$request->user() || !$request->user()->is_admin) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:255',
+        ]);
+
+        $invite->name = $validated['name'];
+        $invite->save();
+
+        // Reload the inviter relation to return it
+        $invite->load('inviter');
+
+        return response()->json($invite);
+    }
+
+    public function revokeInvite(Request $request, \App\Models\UserInvite $invite)
+    {
+        if (!$request->user() || !$request->user()->is_admin) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $invite->delete();
 
         return response()->json(null, 204);
     }

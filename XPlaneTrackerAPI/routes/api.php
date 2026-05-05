@@ -38,6 +38,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/admin/users', [AdminUserController::class, 'store']);
     Route::put('/admin/users/{user}', [AdminUserController::class, 'update']);
     Route::delete('/admin/users/{user}', [AdminUserController::class, 'destroy']);
+    
+    Route::get('/admin/invites', [AdminUserController::class, 'getInvites']);
+    Route::put('/admin/invites/{invite}', [AdminUserController::class, 'updateInvite']);
+    Route::delete('/admin/invites/{invite}', [AdminUserController::class, 'revokeInvite']);
 
     Route::put('/user/profile', [ProfileController::class, 'update']);
 
