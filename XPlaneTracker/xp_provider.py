@@ -149,7 +149,7 @@ class XPlaneProvider(BaseProvider):
                 "roll": round(roll, 1) if roll is not None else None,
                 "ias": int(ias) if ias is not None else None,
                 "stall_warn": bool(stall_warn) if stall_warn is not None else False,
-                "gear_handle": bool(gear_handle == 1.0) if gear_handle is not None else None,
+                "gear_handle": round(gear_handle, 3) if gear_handle is not None else None,
                 "flap_index": round(flap_ratio, 3) if flap_ratio is not None else None,
                 "engines_running": engines,
                 "fuel_kg": round(fuel_kg, 1) if fuel_kg is not None else None,

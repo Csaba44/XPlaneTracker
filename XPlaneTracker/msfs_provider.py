@@ -70,7 +70,7 @@ class MSFSProvider(BaseProvider):
                 "roll": round(float(roll), 1) if roll is not None else None,
                 "ias": int(ias) if ias is not None else None,
                 "stall_warn": bool(stall_warn) if stall_warn is not None else False,
-                "gear_handle": bool(gear_handle) if gear_handle is not None else None,
+                "gear_handle": float(gear_handle) if gear_handle is not None else None,
                 "flap_index": float(flap_index) if flap_index is not None else None,
                 "engines_running": engines,
                 "fuel_kg": round(fuel_lb * _LB_TO_KG, 1) if fuel_lb is not None else None,

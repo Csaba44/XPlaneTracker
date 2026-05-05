@@ -13,6 +13,7 @@ class FlightStateMachine:
 
         self._prev_engines: dict = {}
         self._prev_gear = None
+        self._gear_moving_dir = None
         self._prev_flap_index = None
         self._flap_last_ts = 0.0
         self._prev_on_ground = None
@@ -74,11 +75,13 @@ class FlightStateMachine:
                 self._events.append({"ts": int(ts), "type": "engine_shutdown", "engine": i + 1})
             self._prev_engines[i] = bool(running)
 
-        if gear_handle is not None and self._prev_gear is not None and self._airborne:
-            if not self._prev_gear and gear_handle:
+        if gear_handle is not None and self._prev_gear is not None:
+            if gear_handle > self._prev_gear and self._gear_moving_dir != 'down':
                 self._events.append({"ts": int(ts), "type": "gear_down", "alt": int(alt_baro), "ias": int(ias)})
-            elif self._prev_gear and not gear_handle:
+                self._gear_moving_dir = 'down'
+            elif gear_handle < self._prev_gear and self._gear_moving_dir != 'up':
                 self._events.append({"ts": int(ts), "type": "gear_up", "alt": int(alt_baro), "ias": int(ias)})
+                self._gear_moving_dir = 'up'
         if gear_handle is not None:
             self._prev_gear = gear_handle
 
