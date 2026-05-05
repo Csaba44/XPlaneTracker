@@ -18,9 +18,9 @@ const SAMPLE_LOOKBACK = 30
 
 const DISPLACED_THRESHOLD_STYLE = {
   BAR_THICKNESS_M: 3,       // Thickness of the solid white threshold bar at x=0
-  ARROW_LENGTH_M: 20,       // Length of each arrow along the displaced area
+  ARROW_LENGTH_M: 40,       // Length of each arrow along the displaced area
   ARROW_SPAN_M: 10,         // Width of the arrow head
-  ARROW_SPACING_M: 30,      // Distance between consecutive arrows
+  ARROW_SPACING_M: 60,      // Distance between consecutive arrows
   LINE_WIDTH: 2,            // Stroke width for the markings
   COLOR: '#cbd5e1'          // Color of the markings (matching runway edge)
 }
