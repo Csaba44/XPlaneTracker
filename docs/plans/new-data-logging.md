@@ -500,9 +500,23 @@ Everything else in this plan is concrete; if any other section needs changes, ca
 
 
 # Task
-Update the
-- Python app at @XPlaneTracker - please make sure it will log everything that I want, fully accross all simulators. Modify the main.py file accurately!
-- Frontend at @XPlaneTrackerFrontend
-- Backend at @XPlaneTrackerAPI
+
 
 Please make sure to also display next to the EOBT the actual values, and also the diff. Apply this to all times, or simbrief route distance vs actual, etc. You may make 3 columns with Estimated Actual Delta if u want!
+
+
+@docs/plans/new-data-logging.md you have already implemented this but this is your task now:  Inside the general tab, you forgot to implement the     
+                                                                                                                                                        
+    timeline feature, and the events feature! Create sub-tabs for these, create a nicely looking                                                        
+                                                                                                                                                        
+      timeline for all events, including phase changes, flaps, landing, etc. This is the value for flaps set, [Pasted text #1 +4 lines] please make     
+  sure                                                                                                                                                  
+                                                                                                                                                        
+                                                                                                                                                        
+      it makes sense for all aircraft including any GA and also big airliners. How will we make it so it'll make sense? Also, please show the events on 
+                                                                                                                                                        
+    the map too, where it happened, etc. show a nice icon, if clicked show the associated data, please make sure they are toggle-able in the top right  
+                                                                                                                                                        
+    Rétegek menu!      
+
+    When clicking on the landing also show associated data, like pitch roll, all logged.
