@@ -55,6 +55,7 @@ const showTaxiways = ref(getStorage("flightMap_showTaxiways", true));
 const showStands = ref(getStorage("flightMap_showStands", false));
 const showGates = ref(getStorage("flightMap_showGates", false));
 const showExtendedCenterline = ref(getStorage("flightMap_showExtendedCenterline", false));
+const showEvents = ref(getStorage("flightMap_showEvents", true));
 
 const isLayersMenuOpen = ref(false);
 
@@ -62,12 +63,25 @@ let map = null;
 let pathLayers = [];
 let connectionLayers = [];
 let featureLayers = [];
+let eventLayers = [];
 let hoverMarker = null;
 let tileLayerDark = null;
 let tileLayerSatellite = null;
 
 // Tracks which airport coords have had features drawn so we can redraw on toggle
 const drawnFeatureCoords = [];
+
+const EVENT_META = {
+  engine_start:    { icon: 'fa-circle-play',          color: 'text-green-400',  bg: 'bg-green-500',   label: 'Engine Start' },
+  engine_shutdown: { icon: 'fa-circle-stop',          color: 'text-red-400',    bg: 'bg-red-500',     label: 'Engine Shutdown' },
+  liftoff:         { icon: 'fa-plane-departure',      color: 'text-cyan-400',   bg: 'bg-cyan-500',    label: 'Liftoff' },
+  gear_up:         { icon: 'fa-circle-chevron-up',    color: 'text-amber-400',  bg: 'bg-amber-500',   label: 'Gear Up' },
+  gear_down:       { icon: 'fa-circle-chevron-down',  color: 'text-amber-400',  bg: 'bg-amber-500',   label: 'Gear Down' },
+  flaps_set:       { icon: 'fa-sliders',              color: 'text-violet-400', bg: 'bg-violet-500',  label: 'Flaps' },
+  stall:           { icon: 'fa-triangle-exclamation', color: 'text-red-400',    bg: 'bg-red-500',     label: 'Stall Warning' },
+  touch_and_go:    { icon: 'fa-repeat',               color: 'text-orange-400', bg: 'bg-orange-500',  label: 'Touch & Go' },
+  phase_change:    { icon: 'fa-arrow-right-arrow-left', color: 'text-slate-400', bg: 'bg-slate-500',  label: 'Phase Change' },
+};
 
 const chartData = computed(() => {
   if (!props.flightData?.path) return [];
@@ -156,6 +170,7 @@ const initMap = () => {
   L.control.zoom({ position: "bottomright" }).addTo(map);
   map.createPane("runwaysPane").style.zIndex = 390;
   map.createPane("flightPathPane").style.zIndex = 410;
+  map.createPane("eventsPane").style.zIndex = 420;
   map.createPane("connectionsPane").style.zIndex = 380;
   map.createPane("taxiwaysPane").style.zIndex = 385;
   map.createPane("standsPane").style.zIndex = 395;
@@ -179,6 +194,9 @@ const initMap = () => {
   if (!showExtendedCenterline.value) {
     map.getPane("extendedCenterlinePane").style.display = "none";
   }
+  if (!showEvents.value) {
+    map.getPane("eventsPane").style.display = "none";
+  }
 };
 
 const clearMap = () => {
@@ -201,6 +219,14 @@ const clearConnections = () => {
 const clearFeatures = () => {
   if (!map) return;
   const layers = featureLayers.splice(0);
+  requestAnimationFrame(() => {
+    layers.forEach((l) => map.removeLayer(l));
+  });
+};
+
+const clearEvents = () => {
+  if (!map) return;
+  const layers = eventLayers.splice(0);
   requestAnimationFrame(() => {
     layers.forEach((l) => map.removeLayer(l));
   });
@@ -237,8 +263,23 @@ const fetchFeaturesForLocation = (lat, lon) => {
   fetchAndDrawAirportFeatures(lat, lon, map, featureLayers, options);
 };
 
+const findClosestCoord = (ts, path) => {
+  if (!path || !path.length) return null;
+  let closest = path[0];
+  let minDiff = Math.abs(ts - path[0][0]);
+  for (let i = 1; i < path.length; i++) {
+    const diff = Math.abs(ts - path[i][0]);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = path[i];
+    }
+  }
+  return { lat: closest[1], lon: closest[2] };
+};
+
 const drawFlight = (data) => {
   clearMap();
+  clearEvents();
   drawnFeatureCoords.splice(0);
   clearFeatures();
   if (!map || !data?.path) return;
@@ -327,20 +368,61 @@ const drawFlight = (data) => {
         iconSize: [32, 32],
         iconAnchor: [16, 32],
       });
-      const marker = L.marker([landing.lat, landing.lon], { icon }).addTo(map);
+      const marker = L.marker([landing.lat, landing.lon], { icon, pane: "eventsPane" }).addTo(map);
       marker.bindPopup(
         `<div class="bg-flight-sidebar text-slate-300 p-4 rounded-lg border border-flight-border min-w-[160px] shadow-xl">
           <div class="flex items-center space-x-2 mb-3 border-b border-flight-border pb-2 pr-6"><i class="fa-solid fa-location-dot text-flight-accent"></i><h3 class="font-bold text-white text-sm uppercase tracking-wider">Touchdown</h3></div>
           <div class="space-y-2">
-            <p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Vertical:</span><span class="font-mono text-flight-accent font-bold">${landing.fpm} FPM</span></p>
-            <p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">G-Force:</span><span class="font-mono text-flight-accent font-bold">${landing.g_force}G</span></p>
+            <p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Vertical:</span><span class="font-mono text-flight-accent font-bold">${landing.fpm != null ? landing.fpm : '—'} FPM</span></p>
+            <p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">G-Force:</span><span class="font-mono text-flight-accent font-bold">${landing.g_force != null ? landing.g_force : '—'}G</span></p>
+            ${landing.pitch != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Pitch:</span><span class="font-mono text-white">${landing.pitch}°</span></p>` : ''}
+            ${landing.roll != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Roll:</span><span class="font-mono text-white">${landing.roll}°</span></p>` : ''}
+            ${landing.ias != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">IAS:</span><span class="font-mono text-white">${landing.ias} kts</span></p>` : ''}
+            ${landing.gs != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">GS:</span><span class="font-mono text-white">${landing.gs} kts</span></p>` : ''}
           </div>
         </div>`,
         { className: "flight-popup", maxWidth: 300 },
       );
-      pathLayers.push(marker);
+      eventLayers.push(marker);
       fetchAndDrawRunways(landing.lat, landing.lon, map, pathLayers);
       fetchFeaturesForLocation(landing.lat, landing.lon);
+    });
+  }
+
+  if (data.events?.length) {
+    data.events.forEach((evt) => {
+      if (evt.type === 'touchdown' || evt.type === 'phase_change') return; // Skip touchdown (drawn as landing) and phase changes
+      const coord = findClosestCoord(evt.ts, rawPath);
+      if (!coord) return;
+
+      const meta = EVENT_META[evt.type] || EVENT_META.phase_change;
+      const icon = L.divIcon({
+        html: `<div class="${meta.bg} w-6 h-6 rounded-full flex items-center justify-center border border-white/50 shadow-lg"><i class="fa-solid ${meta.icon} text-white text-[10px]"></i></div>`,
+        className: "custom-div-icon",
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+      });
+      const marker = L.marker([coord.lat, coord.lon], { icon, pane: "eventsPane" }).addTo(map);
+
+      let detailHtml = '';
+      if (evt.alt != null) detailHtml += `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Alt:</span><span class="font-mono text-white">${evt.alt.toLocaleString()} ft</span></p>`;
+      if (evt.ias != null) detailHtml += `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">IAS:</span><span class="font-mono text-white">${evt.ias} kts</span></p>`;
+      if (evt.gs != null) detailHtml += `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">GS:</span><span class="font-mono text-white">${evt.gs} kts</span></p>`;
+      if (evt.pitch != null) detailHtml += `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Pitch:</span><span class="font-mono text-white">${evt.pitch}°</span></p>`;
+      if (evt.roll != null && Math.abs(evt.roll) > 0.5) detailHtml += `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Roll:</span><span class="font-mono text-white">${evt.roll}°</span></p>`;
+      if (evt.engine != null) detailHtml += `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Engine:</span><span class="font-mono text-white">#${evt.engine + 1}</span></p>`;
+      if (evt.index != null) detailHtml += `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Index:</span><span class="font-mono text-white">${evt.index}</span></p>`;
+
+      marker.bindPopup(
+        `<div class="bg-flight-sidebar text-slate-300 p-4 rounded-lg border border-flight-border min-w-[160px] shadow-xl">
+          <div class="flex items-center space-x-2 mb-3 border-b border-flight-border pb-2 pr-6"><i class="fa-solid ${meta.icon} ${meta.color}"></i><h3 class="font-bold text-white text-sm uppercase tracking-wider">${meta.label}</h3></div>
+          <div class="space-y-2">
+            ${detailHtml || '<p class="text-[11px] text-slate-500 font-medium italic">No additional telemetry</p>'}
+          </div>
+        </div>`,
+        { className: "flight-popup", maxWidth: 300 },
+      );
+      eventLayers.push(marker);
     });
   }
 

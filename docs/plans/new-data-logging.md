@@ -500,12 +500,7 @@ Everything else in this plan is concrete; if any other section needs changes, ca
 
 
 # Task
-
-
-Please make sure to also display next to the EOBT the actual values, and also the diff. Apply this to all times, or simbrief route distance vs actual, etc. You may make 3 columns with Estimated Actual Delta if u want!
-
-
-@docs/plans/new-data-logging.md you have already implemented this but this is your task now:  Inside the general tab, you forgot to implement the     
+you have already implemented this but this is your task now:  Inside the general tab, you forgot to implement the     
                                                                                                                                                         
     timeline feature, and the events feature! Create sub-tabs for these, create a nicely looking                                                        
                                                                                                                                                         

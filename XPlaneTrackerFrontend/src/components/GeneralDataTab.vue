@@ -1,9 +1,12 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import FlightTimelineTab from './FlightTimelineTab.vue'
 
 const props = defineProps({
   flightData: { type: Object, default: null },
 })
+
+const activeSubTab = ref('overview')
 
 const meta = computed(() => props.flightData?.metadata ?? {})
 const simbrief = computed(() => meta.value.simbrief ?? null)
@@ -206,169 +209,198 @@ const fuelRows = computed(() => [
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto p-6 space-y-6">
-    <div v-if="!isV2" class="flex items-center gap-3 bg-sky-500/10 border border-sky-500/30 rounded-xl px-4 py-3">
-      <i class="fa-solid fa-circle-info text-sky-400 text-sm"></i>
-      <p class="text-sky-300 text-xs font-medium">This flight was recorded with an older client. Update the desktop app for richer analysis.</p>
+  <div class="h-full flex flex-col">
+    <div class="flex items-center justify-center gap-2 py-3 border-b border-flight-border/50 bg-flight-sidebar flex-shrink-0">
+      <button
+        @click="activeSubTab = 'overview'"
+        :class="[
+          'px-6 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border',
+          activeSubTab === 'overview'
+            ? 'bg-flight-accent/20 border-flight-accent/50 text-flight-accent shadow-[0_0_15px_rgba(56,189,248,0.15)]'
+            : 'border-transparent text-slate-400 hover:text-white hover:bg-flight-card'
+        ]"
+      >
+        <i class="fa-solid fa-table-list mr-2"></i>Overview
+      </button>
+      <button
+        @click="activeSubTab = 'timeline'"
+        :class="[
+          'px-6 py-2 rounded-xl text-[10px] font-bold uppercase tracking-widest transition-all border',
+          activeSubTab === 'timeline'
+            ? 'bg-flight-accent/20 border-flight-accent/50 text-flight-accent shadow-[0_0_15px_rgba(56,189,248,0.15)]'
+            : 'border-transparent text-slate-400 hover:text-white hover:bg-flight-card'
+        ]"
+      >
+        <i class="fa-solid fa-timeline mr-2"></i>Timeline
+      </button>
     </div>
 
-    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg">
-        <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
-          <i class="fa-solid fa-clock text-flight-accent text-xs"></i>
-          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Timestamps (UTC)</span>
-        </div>
-        <table class="w-full">
-          <thead>
-            <tr class="border-b border-flight-border/50">
-              <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Event</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in timingRows" :key="row.label" class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
-              <td class="px-4 py-2.5">
-                <div class="flex items-center gap-2">
-                  <i :class="['fa-solid', row.icon, 'text-flight-muted text-[10px] w-3']"></i>
-                  <span class="text-xs text-slate-400">{{ row.label }}</span>
-                </div>
-              </td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ row.planned ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ row.actual ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs" :class="row.deltaClass">{{ row.delta ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
+    <div v-if="activeSubTab === 'overview'" class="flex-grow overflow-y-auto p-6 space-y-6">
+      <div v-if="!isV2" class="flex items-center gap-3 bg-sky-500/10 border border-sky-500/30 rounded-xl px-4 py-3">
+        <i class="fa-solid fa-circle-info text-sky-400 text-sm"></i>
+        <p class="text-sky-300 text-xs font-medium">This flight was recorded with an older client. Update the desktop app for richer analysis.</p>
       </div>
 
-      <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg">
-        <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
-          <i class="fa-solid fa-stopwatch text-flight-accent text-xs"></i>
-          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Durations</span>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg">
+          <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
+            <i class="fa-solid fa-clock text-flight-accent text-xs"></i>
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Timestamps (UTC)</span>
+          </div>
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-flight-border/50">
+                <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Event</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in timingRows" :key="row.label" class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center gap-2">
+                    <i :class="['fa-solid', row.icon, 'text-flight-muted text-[10px] w-3']"></i>
+                    <span class="text-xs text-slate-400">{{ row.label }}</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ row.planned ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ row.actual ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs" :class="row.deltaClass">{{ row.delta ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <table class="w-full">
-          <thead>
-            <tr class="border-b border-flight-border/50">
-              <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Phase</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in durationRows" :key="row.label" class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
-              <td class="px-4 py-2.5">
-                <div class="flex items-center gap-2">
-                  <i :class="['fa-solid', row.icon, 'text-flight-muted text-[10px] w-3']"></i>
-                  <span class="text-xs text-slate-400">{{ row.label }}</span>
-                </div>
-              </td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ row.planned ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ row.actual ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs" :class="row.deltaClass">{{ row.delta ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
+
+        <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg">
+          <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
+            <i class="fa-solid fa-stopwatch text-flight-accent text-xs"></i>
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Durations</span>
+          </div>
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-flight-border/50">
+                <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Phase</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in durationRows" :key="row.label" class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center gap-2">
+                    <i :class="['fa-solid', row.icon, 'text-flight-muted text-[10px] w-3']"></i>
+                    <span class="text-xs text-slate-400">{{ row.label }}</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ row.planned ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ row.actual ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs" :class="row.deltaClass">{{ row.delta ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg">
+          <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
+            <i class="fa-solid fa-route text-flight-accent text-xs"></i>
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Distance & Speed</span>
+          </div>
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-flight-border/50">
+                <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Metric</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-globe text-flight-muted text-[10px] w-3"></i>
+                    <span class="text-xs text-slate-400">Distance</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ fmtNm(simbrief?.planned_distance_nm) ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ fmtNm(summary?.distance_nm) ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs" :class="numDeltaClass(distanceDelta)">{{ distanceDelta != null ? fmtNumDeltaStr(distanceDelta, 'nm') : '—' }}</td>
+              </tr>
+              <tr class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
+                <td class="px-4 py-2.5">
+                  <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-gauge text-flight-muted text-[10px] w-3"></i>
+                    <span class="text-xs text-slate-400">Avg Groundspeed</span>
+                  </div>
+                </td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">—</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ fmtKts(summary?.avg_groundspeed_kts) ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-flight-muted">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg">
+          <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
+            <i class="fa-solid fa-weight-scale text-flight-accent text-xs"></i>
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Weights</span>
+          </div>
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-flight-border/50">
+                <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Weight</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in weightRows" :key="row.label" class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
+                <td class="px-4 py-2.5 text-xs text-slate-400">{{ row.label }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ row.planned ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ row.actual ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs" :class="row.deltaClass">{{ row.delta ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg xl:col-span-2">
+          <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
+            <i class="fa-solid fa-droplet text-flight-accent text-xs"></i>
+            <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Fuel</span>
+          </div>
+          <table class="w-full">
+            <thead>
+              <tr class="border-b border-flight-border/50">
+                <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Type</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
+                <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in fuelRows" :key="row.label" class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
+                <td class="px-4 py-2.5 text-xs text-slate-400">{{ row.label }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ row.planned ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ row.actual ?? '—' }}</td>
+                <td class="px-4 py-2.5 text-right font-mono text-xs" :class="row.deltaClass">{{ row.delta ?? '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg">
-        <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
-          <i class="fa-solid fa-route text-flight-accent text-xs"></i>
-          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Distance & Speed</span>
-        </div>
-        <table class="w-full">
-          <thead>
-            <tr class="border-b border-flight-border/50">
-              <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Metric</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
-              <td class="px-4 py-2.5">
-                <div class="flex items-center gap-2">
-                  <i class="fa-solid fa-globe text-flight-muted text-[10px] w-3"></i>
-                  <span class="text-xs text-slate-400">Distance</span>
-                </div>
-              </td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ fmtNm(simbrief?.planned_distance_nm) ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ fmtNm(summary?.distance_nm) ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs" :class="numDeltaClass(distanceDelta)">{{ distanceDelta != null ? fmtNumDeltaStr(distanceDelta, 'nm') : '—' }}</td>
-            </tr>
-            <tr class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
-              <td class="px-4 py-2.5">
-                <div class="flex items-center gap-2">
-                  <i class="fa-solid fa-gauge text-flight-muted text-[10px] w-3"></i>
-                  <span class="text-xs text-slate-400">Avg Groundspeed</span>
-                </div>
-              </td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">—</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ fmtKts(summary?.avg_groundspeed_kts) ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-flight-muted">—</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg">
-        <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
-          <i class="fa-solid fa-weight-scale text-flight-accent text-xs"></i>
-          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Weights</span>
-        </div>
-        <table class="w-full">
-          <thead>
-            <tr class="border-b border-flight-border/50">
-              <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Weight</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in weightRows" :key="row.label" class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
-              <td class="px-4 py-2.5 text-xs text-slate-400">{{ row.label }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ row.planned ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ row.actual ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs" :class="row.deltaClass">{{ row.delta ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="bg-flight-card border border-flight-border rounded-xl overflow-hidden shadow-lg xl:col-span-2">
-        <div class="px-4 py-3 border-b border-flight-border flex items-center gap-2">
-          <i class="fa-solid fa-droplet text-flight-accent text-xs"></i>
-          <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Fuel</span>
-        </div>
-        <table class="w-full">
-          <thead>
-            <tr class="border-b border-flight-border/50">
-              <th class="text-left px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Type</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-sky-600 uppercase tracking-widest w-1/4">Planned</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest w-1/4">Actual</th>
-              <th class="text-right px-4 py-2 text-[9px] font-bold text-slate-600 uppercase tracking-widest w-1/4">Delta</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="row in fuelRows" :key="row.label" class="border-b border-flight-border/30 last:border-0 hover:bg-white/[0.02]">
-              <td class="px-4 py-2.5 text-xs text-slate-400">{{ row.label }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-sky-400/70">{{ row.planned ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs text-white">{{ row.actual ?? '—' }}</td>
-              <td class="px-4 py-2.5 text-right font-mono text-xs" :class="row.deltaClass">{{ row.delta ?? '—' }}</td>
-            </tr>
-          </tbody>
-        </table>
+      <div v-if="!isV2 && !timing && !simbrief" class="flex flex-col items-center justify-center py-16 text-center">
+        <i class="fa-solid fa-chart-bar text-4xl text-slate-700 mb-4"></i>
+        <p class="text-slate-500 text-sm font-medium">No flight data available</p>
+        <p class="text-slate-600 text-xs mt-1">Record a new flight with the desktop app to see detailed statistics.</p>
       </div>
     </div>
 
-    <div v-if="!isV2 && !timing && !simbrief" class="flex flex-col items-center justify-center py-16 text-center">
-      <i class="fa-solid fa-chart-bar text-4xl text-slate-700 mb-4"></i>
-      <p class="text-slate-500 text-sm font-medium">No flight data available</p>
-      <p class="text-slate-600 text-xs mt-1">Record a new flight with the desktop app to see detailed statistics.</p>
-    </div>
+    <FlightTimelineTab v-else-if="activeSubTab === 'timeline'" :flightData="flightData" class="flex-grow" />
   </div>
 </template>
