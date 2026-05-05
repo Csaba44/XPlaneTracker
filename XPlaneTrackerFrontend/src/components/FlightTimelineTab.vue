@@ -62,7 +62,7 @@ const buildDetail = (evt) => {
 const allItems = computed(() => {
   const items = []
 
-  rawPhases.value.forEach((phase) => {
+  rawPhases.value.forEach((phase, idx) => {
     const cfg = PHASE_META[phase.type] ?? PHASE_META.cruise
     items.push({
       ts: phase.start,
@@ -76,10 +76,13 @@ const allItems = computed(() => {
       detail: phase.peak_alt ? `Peak: ${phase.peak_alt.toLocaleString()} ft` : null,
       duration: phase.end != null ? phase.end - phase.start : null,
       critical: false,
+      originalIndex: idx,
     })
   })
 
-  rawEvents.value.forEach((evt) => {
+  rawEvents.value.forEach((evt, idx) => {
+    if (evt.type === 'phase_change') return
+
     const cfg = EVENT_META[evt.type] ?? EVENT_META.phase_change
     const engineSuffix = evt.engine != null ? ` #${evt.engine + 1}` : ''
     const flapSuffix = evt.type === 'flaps_set' && evt.index != null ? ` ${evt.index}` : ''
@@ -95,10 +98,15 @@ const allItems = computed(() => {
       detail: buildDetail(evt),
       duration: null,
       critical: cfg.critical,
+      originalIndex: idx,
     })
   })
 
-  return items.sort((a, b) => a.ts - b.ts)
+  return items.sort((a, b) => {
+    if (a.ts !== b.ts) return a.ts - b.ts
+    if (a.kind !== b.kind) return a.kind === 'event' ? -1 : 1
+    return a.originalIndex - b.originalIndex
+  })
 })
 
 const FILTERS = [
