@@ -104,29 +104,32 @@ class FlightStateMachine:
         if on_ground is not None and self._prev_on_ground is not None:
             if self._prev_on_ground and not on_ground and gs > 50:
                 self._airborne = True
-                self._liftoff_ts = ts
-                self._liftoff_max_pitch = pitch
-                self._liftoff_window_end = ts + 10.0
-                ev = {
-                    "ts": int(ts), "type": "liftoff",
-                    "pitch": round(pitch, 1), "max_pitch_10s": round(pitch, 1),
-                    "roll": round(roll, 1), "ias": int(ias), "gs": int(gs), "alt": int(alt_baro),
-                }
-                self._liftoff_event_idx = len(self._events)
-                self._events.append(ev)
-                self._ground_contact_ts = None
-                self._phase_transition("climb", ts, alt_baro)
+                time_since_touchdown = (ts - self._ground_contact_ts) if self._ground_contact_ts else float('inf')
+
+                if time_since_touchdown <= 3.0:
+                    self._events.append({"ts": int(ts), "type": "bounce", "gs": int(gs), "ias": int(ias)})
+                elif time_since_touchdown <= 10.0:
+                    self._events.append({"ts": int(ts), "type": "touch_and_go", "gs": int(gs)})
+                    self._ground_contact_ts = None
+                    self._phase_transition("climb", ts, alt_baro)
+                else:
+                    self._liftoff_ts = ts
+                    self._liftoff_max_pitch = pitch
+                    self._liftoff_window_end = ts + 10.0
+                    ev = {
+                        "ts": int(ts), "type": "liftoff",
+                        "pitch": round(pitch, 1), "max_pitch_10s": round(pitch, 1),
+                        "roll": round(roll, 1), "ias": int(ias), "gs": int(gs), "alt": int(alt_baro),
+                    }
+                    self._liftoff_event_idx = len(self._events)
+                    self._events.append(ev)
+                    self._ground_contact_ts = None
+                    self._phase_transition("climb", ts, alt_baro)
 
             elif not self._prev_on_ground and on_ground:
                 self._ground_contact_ts = ts
                 self._events.append({"ts": int(ts), "type": "touchdown"})
                 self._phase_end(ts)
-
-        if self._ground_contact_ts and not on_ground and self._airborne:
-            if ts - self._ground_contact_ts < 10.0:
-                self._events.append({"ts": int(ts), "type": "touch_and_go", "gs": int(gs)})
-                self._ground_contact_ts = None
-                self._phase_transition("climb", ts, alt_baro)
 
         if on_ground is not None:
             self._prev_on_ground = on_ground

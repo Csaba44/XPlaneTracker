@@ -75,6 +75,7 @@ const EVENT_META = {
   flaps_set:       { icon: 'fa-sliders',              color: 'text-violet-400', bg: 'bg-violet-500/10',  border: 'border-violet-500/25',  label: 'Flaps',           critical: false },
   stall:           { icon: 'fa-triangle-exclamation', color: 'text-red-400',    bg: 'bg-red-500/10',     border: 'border-red-500/25',     label: 'Stall Warning',   critical: true  },
   touch_and_go:    { icon: 'fa-repeat',               color: 'text-orange-400', bg: 'bg-orange-500/10',  border: 'border-orange-500/25',  label: 'Touch & Go',      critical: false },
+  bounce:          { icon: 'fa-arrow-turn-up',        color: 'text-orange-400', bg: 'bg-orange-500/10',  border: 'border-orange-500/25',  label: 'Bounce',          critical: false },
   phase_change:    { icon: 'fa-arrow-right-arrow-left', color: 'text-slate-400', bg: 'bg-slate-500/10', border: 'border-slate-500/25',   label: 'Phase Change',    critical: false },
 }
 

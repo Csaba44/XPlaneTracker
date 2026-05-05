@@ -57,7 +57,7 @@ const showGates = ref(getStorage("flightMap_showGates", false));
 const showExtendedCenterline = ref(getStorage("flightMap_showExtendedCenterline", false));
 const showEvents = ref(getStorage("flightMap_showEvents", true));
 
-const TYPE_TOGGLE_KEYS = ['engine_start', 'engine_shutdown', 'liftoff', 'gear_up', 'gear_down', 'flaps_set', 'stall', 'touch_and_go'];
+const TYPE_TOGGLE_KEYS = ['engine_start', 'engine_shutdown', 'liftoff', 'touchdown', 'bounce', 'gear_up', 'gear_down', 'flaps_set', 'stall', 'touch_and_go'];
 const DEFAULT_OFF_TYPES = new Set(['flaps_set', 'gear_up', 'gear_down']);
 const eventTypeEnabled = ref(Object.fromEntries(
   TYPE_TOGGLE_KEYS.map((t) => [t, getStorage(`flightMap_eventType_${t}`, !DEFAULT_OFF_TYPES.has(t))])
@@ -87,6 +87,8 @@ const EVENT_META = {
   engine_start:    { icon: 'fa-circle-play',          color: 'text-green-400',  bg: 'bg-green-500',   label: 'Engine Start' },
   engine_shutdown: { icon: 'fa-circle-stop',          color: 'text-red-400',    bg: 'bg-red-500',     label: 'Engine Shutdown' },
   liftoff:         { icon: 'fa-plane-departure',      color: 'text-cyan-400',   bg: 'bg-cyan-500',    label: 'Liftoff' },
+  touchdown:       { icon: 'fa-plane-arrival',        color: 'text-cyan-400',   bg: 'bg-cyan-500',    label: 'Touchdown' },
+  bounce:          { icon: 'fa-arrow-turn-up',        color: 'text-orange-400', bg: 'bg-orange-500',  label: 'Bounce' },
   gear_up:         { icon: 'fa-circle-chevron-up',    color: 'text-amber-400',  bg: 'bg-amber-500',   label: 'Gear Up' },
   gear_down:       { icon: 'fa-circle-chevron-down',  color: 'text-amber-400',  bg: 'bg-amber-500',   label: 'Gear Down' },
   flaps_set:       { icon: 'fa-sliders',              color: 'text-violet-400', bg: 'bg-violet-500',  label: 'Flaps' },
@@ -374,28 +376,30 @@ const drawFlight = (data) => {
 
   if (data.landings?.length) {
     data.landings.forEach((landing) => {
-      const icon = L.divIcon({
-        html: `<div class="bg-flight-accent w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-lg shadow-cyan-500/50"><i class="fa-solid fa-plane-arrival text-white text-xs"></i></div>`,
-        className: "custom-div-icon",
-        iconSize: [32, 32],
-        iconAnchor: [16, 32],
-      });
-      const marker = L.marker([landing.lat, landing.lon], { icon, pane: "eventsPane" }).addTo(map);
-      marker.bindPopup(
-        `<div class="bg-flight-sidebar text-slate-300 p-4 rounded-lg border border-flight-border min-w-[160px] shadow-xl">
-          <div class="flex items-center space-x-2 mb-3 border-b border-flight-border pb-2 pr-6"><i class="fa-solid fa-location-dot text-flight-accent"></i><h3 class="font-bold text-white text-sm uppercase tracking-wider">Touchdown</h3></div>
-          <div class="space-y-2">
-            <p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Vertical:</span><span class="font-mono text-flight-accent font-bold">${landing.fpm != null ? landing.fpm : '—'} FPM</span></p>
-            <p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">G-Force:</span><span class="font-mono text-flight-accent font-bold">${landing.g_force != null ? landing.g_force : '—'}G</span></p>
-            ${landing.pitch != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Pitch:</span><span class="font-mono text-white">${landing.pitch}°</span></p>` : ''}
-            ${landing.roll != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Roll:</span><span class="font-mono text-white">${landing.roll}°</span></p>` : ''}
-            ${landing.ias != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">IAS:</span><span class="font-mono text-white">${landing.ias} kts</span></p>` : ''}
-            ${landing.gs != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">GS:</span><span class="font-mono text-white">${landing.gs} kts</span></p>` : ''}
-          </div>
-        </div>`,
-        { className: "flight-popup", maxWidth: 300 },
-      );
-      eventLayers.push(marker);
+      if (eventTypeEnabled.value['touchdown'] !== false) {
+        const icon = L.divIcon({
+          html: `<div class="bg-flight-accent w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-lg shadow-cyan-500/50"><i class="fa-solid fa-plane-arrival text-white text-xs"></i></div>`,
+          className: "custom-div-icon",
+          iconSize: [32, 32],
+          iconAnchor: [16, 32],
+        });
+        const marker = L.marker([landing.lat, landing.lon], { icon, pane: "eventsPane" }).addTo(map);
+        marker.bindPopup(
+          `<div class="bg-flight-sidebar text-slate-300 p-4 rounded-lg border border-flight-border min-w-[160px] shadow-xl">
+            <div class="flex items-center space-x-2 mb-3 border-b border-flight-border pb-2 pr-6"><i class="fa-solid fa-location-dot text-flight-accent"></i><h3 class="font-bold text-white text-sm uppercase tracking-wider">Touchdown</h3></div>
+            <div class="space-y-2">
+              <p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Vertical:</span><span class="font-mono text-flight-accent font-bold">${landing.fpm != null ? landing.fpm : '—'} FPM</span></p>
+              <p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">G-Force:</span><span class="font-mono text-flight-accent font-bold">${landing.g_force != null ? landing.g_force : '—'}G</span></p>
+              ${landing.pitch != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Pitch:</span><span class="font-mono text-white">${landing.pitch}°</span></p>` : ''}
+              ${landing.roll != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">Roll:</span><span class="font-mono text-white">${landing.roll}°</span></p>` : ''}
+              ${landing.ias != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">IAS:</span><span class="font-mono text-white">${landing.ias} kts</span></p>` : ''}
+              ${landing.gs != null ? `<p class="text-[11px] flex justify-between gap-6"><span class="text-slate-500 font-medium">GS:</span><span class="font-mono text-white">${landing.gs} kts</span></p>` : ''}
+            </div>
+          </div>`,
+          { className: "flight-popup", maxWidth: 300 },
+        );
+        eventLayers.push(marker);
+      }
       fetchAndDrawRunways(landing.lat, landing.lon, map, pathLayers);
       fetchFeaturesForLocation(landing.lat, landing.lon);
     });
