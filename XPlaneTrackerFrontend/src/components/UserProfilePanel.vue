@@ -48,7 +48,7 @@ onUnmounted(() => {
   <div class="flex flex-col space-y-3 mb-4">
     <div class="flex items-center justify-between bg-flight-card border border-flight-border p-3 rounded-lg shadow-md">
       <div class="flex flex-col">
-        <span class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Szia testvér!</span>
+        <span class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">Welcome back!</span>
         <span class="text-xs text-white font-bold truncate max-w-[120px]">
           {{ user?.name || user?.email || "Pilot" }}
         </span>
@@ -69,22 +69,22 @@ onUnmounted(() => {
     <div class="flex flex-wrap gap-2">
       <router-link v-if="route.name !== 'flights'" to="/flights" class="flex-1 basis-[45%] flex justify-center items-center space-x-2 bg-flight-accent/10 hover:bg-flight-accent text-flight-accent hover:text-white border border-flight-accent transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">
         <i class="fa-solid fa-plane"></i>
-        <span>Járatok</span>
+        <span>Flights</span>
       </router-link>
 
       <router-link v-if="route.name !== 'community'" to="/community" class="flex-1 basis-[45%] flex justify-center items-center space-x-2 bg-teal-500/10 hover:bg-teal-500 text-teal-500 hover:text-white border border-teal-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">
         <i class="fa-solid fa-earth-europe"></i>
-        <span>Közösség</span>
+        <span>Community</span>
       </router-link>
 
       <router-link v-if="route.name !== 'friends'" to="/friends" class="flex-1 basis-[45%] flex justify-center items-center space-x-2 bg-amber-500/10 hover:bg-amber-500 text-amber-500 hover:text-white border border-amber-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">
         <i class="fa-solid fa-users"></i>
-        <span>Barátok</span>
+        <span>Friends</span>
       </router-link>
 
       <router-link v-if="route.name !== 'leaderboard'" to="/leaderboard" class="flex-1 basis-[45%] flex justify-center items-center space-x-2 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white border border-rose-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer">
         <i class="fa-solid fa-trophy"></i>
-        <span>Ranglista</span>
+        <span>Leaderboard</span>
       </router-link>
     </div>
 
@@ -93,7 +93,7 @@ onUnmounted(() => {
     <div class="relative" ref="dropdownRef">
       <button @click="isDropdownOpen = !isDropdownOpen" class="w-full bg-flight-card hover:bg-slate-800 text-slate-300 hover:text-white border border-flight-border transition-colors p-2.5 rounded-lg text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-2 shadow-sm cursor-pointer">
         <i class="fa-solid fa-toolbox text-slate-400"></i>
-        <span>Eszközök</span>
+        <span>Tools</span>
         <i class="fa-solid fa-chevron-down text-[10px] ml-auto transition-transform duration-200" :class="{ 'rotate-180': isDropdownOpen }"></i>
       </button>
 
@@ -121,13 +121,13 @@ onUnmounted(() => {
           :disabled="isUploading"
           class="w-full bg-green-500/10 hover:bg-green-500 text-green-500 hover:text-white border border-green-500 transition-colors p-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
         >
-          <i class="fa-solid fa-file-arrow-up"></i> {{ isUploading ? "Töltöm teso..." : "Manual PIREP" }}
+          <i class="fa-solid fa-file-arrow-up"></i> {{ isUploading ? "Uploading..." : "Manual PIREP" }}
         </button>
       </div>
     </div>
 
     <div v-if="generatedApiKey" class="bg-black/50 p-3 rounded-lg border border-flight-border mt-1">
-      <p class="text-[10px] text-red-400 font-bold uppercase mb-1">Vigyázz rá testvérem, el ne lopják!</p>
+      <p class="text-[10px] text-red-400 font-bold uppercase mb-1">Protect your account!</p>
       <code class="text-[10px] text-flight-accent break-all select-all">{{ generatedApiKey }}</code>
     </div>
   </div>

@@ -154,9 +154,9 @@ const shareFlight = async (id) => {
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("Vágólapra másolva.");
+      toast.success("Copied to clipboard.");
     } catch (err) {
-      prompt("Másold ki:", url);
+      prompt("Copy this:", url);
     }
   } else {
     const textArea = document.createElement("textarea");
@@ -170,9 +170,9 @@ const shareFlight = async (id) => {
 
     try {
       document.execCommand("copy");
-      toast.success("Vágólapra másolva.");
+      toast.success("Copied to clipboard.");
     } catch (err) {
-      prompt("Másold ki:", url);
+      prompt("Copy this:", url);
     } finally {
       textArea.remove();
     }
@@ -183,11 +183,11 @@ const saveProfile = async (formData) => {
   try {
     const response = await api.put("/api/user/profile", formData);
     authStore.user = response.data;
-    toast.success("Profil sikeresen frissítve.");
+    toast.success("Profile updated successfully.");
     isProfileModalOpen.value = false;
   } catch (error) {
     console.error(error);
-    toast.error(error.response?.data?.message || "Hiba a profil frissítésekor.");
+    toast.error(error.response?.data?.message || "Error updating profile.");
   }
 };
 
@@ -205,16 +205,16 @@ const saveFlight = async (formData) => {
       flights.value[index] = { ...flights.value[index], ...response.data };
     }
 
-    toast.success("Járat sikeresen frissítve.");
+    toast.success("Flight updated successfully.");
     isEditFlightModalOpen.value = false;
   } catch (error) {
     console.error(error);
-    toast.error(error.response?.data?.message || "Hiba a járat frissítésekor.");
+    toast.error(error.response?.data?.message || "Error updating flight.");
   }
 };
 
 const deleteFlight = async (id) => {
-  if (!confirm("Biztosan törölni akarod ezt a járatot?")) return;
+  if (!confirm("Are you sure you want to delete this flight?")) return;
 
   try {
     await api.delete(`/api/flights/${id}`);
@@ -226,10 +226,10 @@ const deleteFlight = async (id) => {
       currentFlightData.value = null;
     }
 
-    toast.success("Járat sikeresen törölve.");
+    toast.success("Flight deleted successfully.");
   } catch (error) {
     console.error(error);
-    toast.error("Hiba történt a törlés során.");
+    toast.error("Error occurred during deletion.");
   }
 };
 
@@ -249,7 +249,7 @@ onMounted(async () => {
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
             <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">CSABOLANTA</h1>
-            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">Muro phralenge 🍀</p>
+            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">For the community 🍀</p>
           </div>
         </div>
 
@@ -263,13 +263,13 @@ onMounted(async () => {
       <div class="flex-grow overflow-y-auto px-4 pb-4 space-y-3">
         <div v-if="flights.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center">
           <i class="fa-solid fa-satellite-dish text-2xl mb-3 opacity-50"></i>
-          <p class="text-sm italic">Keresem tesó, várj egy picit...</p>
+          <p class="text-sm italic">Searching, please wait...</p>
         </div>
 
         <div v-else-if="filteredFlights.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center bg-flight-card/50 rounded-xl border border-flight-border border-dashed">
           <i class="fa-solid fa-plane-slash text-2xl mb-3 opacity-50 text-flight-accent"></i>
-          <p class="text-sm font-bold text-slate-400">Nincs itt semmi.</p>
-          <p class="text-[10px] uppercase tracking-widest mt-1">Nem találtam ilyet muro phral</p>
+          <p class="text-sm font-bold text-slate-400">Nothing here.</p>
+          <p class="text-[10px] uppercase tracking-widest mt-1">No results found</p>
         </div>
 
         <FlightCard v-for="flight in filteredFlights" :key="flight.id" :flight="flight" :isSelected="selectedFlightId === flight.id" @click="viewFlight(flight.id)" @delete="deleteFlight(flight.id)" @edit="openEditFlightModal(flight)" @share="shareFlight(flight.id)" />

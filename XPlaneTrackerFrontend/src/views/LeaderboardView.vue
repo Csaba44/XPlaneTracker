@@ -24,7 +24,7 @@ const fetchLeaderboard = async () => {
     topHours.value = response.data.top_hours;
   } catch (error) {
     console.error(error);
-    toast.error("Hiba a ranglista betöltésekor.");
+    toast.error("Error loading leaderboard.");
   } finally {
     isLoading.value = false;
   }
@@ -55,11 +55,11 @@ const saveProfile = async (formData) => {
   try {
     const response = await api.put("/api/user/profile", formData);
     authStore.user = response.data;
-    toast.success("Profil sikeresen frissítve.");
+    toast.success("Profile updated successfully.");
     isProfileModalOpen.value = false;
   } catch (error) {
     console.error(error);
-    toast.error("Hiba a profil frissítésekor.");
+    toast.error("Error updating profile.");
   }
 };
 
@@ -78,14 +78,14 @@ onMounted(async () => {
         <div class="flex items-center space-x-3 mb-6">
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
-            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">TOP Pujarok</h1>
-            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">A legkomolyabbak 🏆</p>
+            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">TOP PILOTS</h1>
+            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">The best of the best 🏆</p>
           </div>
         </div>
 
         <router-link to="/flights" class="w-full flex items-center justify-center space-x-2 bg-flight-card hover:bg-flight-card-hover border border-flight-border transition-colors p-3 rounded-xl text-xs font-bold uppercase tracking-wider text-white mb-4">
           <i class="fa-solid fa-plane"></i>
-          <span>Vissza a járatokhoz</span>
+          <span>Back to flights</span>
         </router-link>
       </div>
     </aside>
@@ -93,13 +93,13 @@ onMounted(async () => {
     <main class="flex-grow overflow-y-auto p-10 relative">
       <div class="max-w-6xl mx-auto">
         <div class="mb-10">
-          <h1 class="text-3xl font-black text-white italic uppercase tracking-tighter flex items-center"><i class="fa-solid fa-ranking-star text-flight-accent mr-4 text-4xl"></i> Havi Ranglista</h1>
-          <p class="text-slate-500 font-bold uppercase tracking-widest text-[10px] mt-2 ml-14">Az elmúlt 30 nap statisztikái</p>
+          <h1 class="text-3xl font-black text-white italic uppercase tracking-tighter flex items-center"><i class="fa-solid fa-ranking-star text-flight-accent mr-4 text-4xl"></i> Monthly Leaderboard</h1>
+          <p class="text-slate-500 font-bold uppercase tracking-widest text-[10px] mt-2 ml-14">Statistics for the last 30 days</p>
         </div>
 
         <div v-if="isLoading" class="text-center py-20 text-slate-500">
           <i class="fa-solid fa-spinner fa-spin text-3xl mb-4 text-flight-accent"></i>
-          <p class="text-sm italic">Adatok betöltése...</p>
+          <p class="text-sm italic">Loading data...</p>
         </div>
 
         <div v-else>
@@ -135,8 +135,8 @@ onMounted(async () => {
 
           <div v-if="airportLeaderboards.length === 0" class="text-center py-20 text-slate-500 bg-flight-card/50 rounded-xl border border-flight-border border-dashed">
             <i class="fa-solid fa-plane-slash text-4xl mb-4 text-flight-accent opacity-50"></i>
-            <p class="text-lg font-bold text-slate-400">Nincs elég adat a leszállási ranglistához.</p>
-            <p class="text-[10px] uppercase tracking-widest mt-2">Legalább 2 pilóta landolása szükséges egy adott reptéren az elmúlt 30 napban.</p>
+            <p class="text-lg font-bold text-slate-400">Not enough data for the landing leaderboard.</p>
+            <p class="text-[10px] uppercase tracking-widest mt-2">At least 2 pilots must land at an airport in the last 30 days.</p>
           </div>
 
           <div v-for="airport in airportLeaderboards" :key="airport.icao" class="mb-12 bg-flight-card border border-flight-border rounded-xl shadow-2xl overflow-hidden">

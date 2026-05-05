@@ -67,16 +67,16 @@ onUnmounted(() => {
           <i class="fa-solid fa-magnifying-glass text-xs"></i>
         </div>
 
-        <input ref="inputRef" v-model="localSearch" type="text" placeholder="Keresés globálisan, vagy címkékkel (pl. dep:LHBP callsign:RYR)..." class="w-full bg-transparent py-2.5 text-xs text-white focus:outline-none placeholder-slate-600" @keydown.esc="isDropdownOpen = false" />
+        <input ref="inputRef" v-model="localSearch" type="text" placeholder="Search globally or with tags (e.g. dep:LHBP callsign:RYR)..." class="w-full bg-transparent py-2.5 text-xs text-white focus:outline-none placeholder-slate-600" @keydown.esc="isDropdownOpen = false" />
 
-        <button @click.prevent="isDropdownOpen = !isDropdownOpen" class="px-3 text-slate-400 hover:text-flight-accent transition-colors border-l border-flight-border/50 text-xs flex items-center space-x-1 h-full" title="Szűrő címke hozzáadása">
+        <button @click.prevent="isDropdownOpen = !isDropdownOpen" class="px-3 text-slate-400 hover:text-flight-accent transition-colors border-l border-flight-border/50 text-xs flex items-center space-x-1 h-full" title="Add filter tag">
           <i class="fa-solid fa-tags"></i>
           <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i>
         </button>
 
         <div v-if="isDropdownOpen" class="absolute right-0 top-full mt-2 w-56 bg-flight-card border border-flight-border rounded-lg shadow-xl z-50 overflow-hidden">
           <div class="px-3 py-2 border-b border-flight-border/50 bg-black/20">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Elérhető Címkék</span>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Available Tags</span>
           </div>
           <div class="flex flex-col py-1">
             <button v-for="tag in availableTags" :key="tag.value" @click.prevent="insertTag(tag.value)" class="flex items-center px-3 py-2 text-xs text-left text-slate-300 hover:bg-flight-accent/10 hover:text-flight-accent transition-colors">
@@ -90,16 +90,16 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <button v-if="localSearch" @click="clearAll" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 px-3 py-2.5 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer min-w-[40px]" title="Keresés törlése">
+      <button v-if="localSearch" @click="clearAll" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 px-3 py-2.5 rounded-lg text-xs transition-colors flex items-center justify-center cursor-pointer min-w-[40px]" title="Clear search">
         <i class="fa-solid fa-filter-circle-xmark"></i>
       </button>
     </div>
 
     <div class="flex justify-between items-center text-[9px] text-slate-500 font-bold uppercase tracking-widest pt-1 border-t border-flight-border/50">
       <span
-        >Találat: <span class="text-flight-accent">{{ filteredCount }}</span></span
+        >Results: <span class="text-flight-accent">{{ filteredCount }}</span></span
       >
-      <span v-if="totalCount > 0">Összesen: {{ totalCount }}</span>
+      <span v-if="totalCount > 0">Total: {{ totalCount }}</span>
     </div>
   </div>
 </template>

@@ -24,9 +24,9 @@ const handleLogin = async () => {
     router.push("/flights");
   } catch (error) {
     if (error.response?.status === 422 || error.response?.status === 401) {
-      errorMessage.value = "Hibás felhasználónév vagy jelszó! Jo hulye vagy.";
+      errorMessage.value = "Invalid email or password.";
     } else {
-      errorMessage.value = "Valami nem jó geci. Próbáld újra!";
+      errorMessage.value = "Something went wrong. Please try again.";
     }
   } finally {
     isLoading.value = false;
@@ -42,28 +42,28 @@ const handleLogin = async () => {
       </div>
 
       <div class="text-center mb-10">
-        <h2 class="text-3xl font-black text-white italic tracking-tighter">BELÉPÉS</h2>
-        <p class="text-slate-500 text-xs uppercase tracking-widest mt-2">Csak széptestvéreknek ⛔</p>
+        <h2 class="text-3xl font-black text-white italic tracking-tighter">LOGIN</h2>
+        <p class="text-slate-500 text-xs uppercase tracking-widest mt-2">Authorized pilots only ⛔</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="space-y-6">
         <div class="space-y-2">
           <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Email</label>
-          <input v-model="email" type="email" required class="w-full bg-flight-card border border-flight-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" placeholder="roland.nyisztor@trenerkft.hu" />
+          <input v-model="email" type="email" required class="w-full bg-flight-card border border-flight-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" placeholder="pilot@example.com" />
         </div>
 
         <div class="space-y-2">
-          <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Jelszó</label>
+          <label class="text-[10px] font-bold text-slate-500 uppercase ml-1">Password</label>
           <input v-model="password" type="password" required class="w-full bg-flight-card border border-flight-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-flight-accent transition-colors" placeholder="••••••••" />
         </div>
 
         <button type="submit" :disabled="isLoading" class="w-full bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-4 rounded-xl transition-all shadow-lg uppercase tracking-widest text-sm mt-4 cursor-pointer disabled:opacity-50">
-          {{ isLoading ? "Varjal teso mindjart..." : "Zha tar aba muro phral, megyunk repulozni" }}
+          {{ isLoading ? "Authenticating..." : "Enter Cockpit" }}
         </button>
       </form>
 
       <div class="mt-8 text-center">
-        <router-link to="/" class="text-slate-500 hover:text-white text-xs transition-colors"> <i class="fa-solid fa-arrow-left mr-2"></i> Vissza a főoldalra </router-link>
+        <router-link to="/" class="text-slate-500 hover:text-white text-xs transition-colors"> <i class="fa-solid fa-arrow-left mr-2"></i> Back to home </router-link>
       </div>
     </div>
   </div>

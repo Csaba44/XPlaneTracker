@@ -18,7 +18,7 @@ const fetchFriends = async () => {
     friends.value = response.data;
   } catch (error) {
     console.error(error);
-    toast.error("Hiba a barátok betöltésekor.");
+    toast.error("Error loading friends.");
   }
 };
 
@@ -68,48 +68,47 @@ const hasPendingRequest = (id) => {
 const addFriend = async (friendId) => {
   try {
     await api.post("/api/friends", { friend_id: friendId });
-    toast.success("Barátkérelem elküldve!");
-    // Keresés frissítése, hogy látszódjon a gomb változása (ha szükséges)
+    toast.success("Friend request sent!");
     searchUsers();
   } catch (error) {
     console.error(error);
-    toast.error(error.response?.data?.message || "Hiba a hozzáadáskor.");
+    toast.error(error.response?.data?.message || "Error adding friend.");
   }
 };
 
 const acceptRequest = async (friendId) => {
   try {
     await api.patch(`/api/friends/${friendId}/accept`);
-    toast.success("Kérelem elfogadva!");
+    toast.success("Request accepted!");
     await fetchRequests();
     await fetchFriends();
   } catch (error) {
     console.error(error);
-    toast.error("Hiba az elfogadáskor.");
+    toast.error("Error accepting request.");
   }
 };
 
 const declineRequest = async (friendId) => {
   try {
     await api.delete(`/api/friends/${friendId}`);
-    toast.success("Kérelem elutasítva.");
+    toast.success("Request declined.");
     await fetchRequests();
   } catch (error) {
     console.error(error);
-    toast.error("Hiba az elutasításkor.");
+    toast.error("Error declining request.");
   }
 };
 
 const removeFriend = async (friendId) => {
-  if (!confirm("Biztosan törlöd ezt a testvért a listádról?")) return;
+  if (!confirm("Are you sure you want to remove this friend?")) return;
 
   try {
     await api.delete(`/api/friends/${friendId}`);
     friends.value = friends.value.filter((f) => f.id !== friendId);
-    toast.success("Testvér törölve.");
+    toast.success("Friend removed.");
   } catch (error) {
     console.error(error);
-    toast.error("Hiba a törléskor.");
+    toast.error("Error removing friend.");
   }
 };
 
@@ -129,14 +128,14 @@ onMounted(async () => {
         <div class="flex items-center space-x-3 mb-6">
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
-            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">BARÁTOK</h1>
-            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">Muro phralenge 🍀</p>
+            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">FRIENDS</h1>
+            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">For the community 🍀</p>
           </div>
         </div>
 
         <router-link to="/flights" class="w-full flex items-center justify-center space-x-2 bg-flight-card hover:bg-flight-card-hover border border-flight-border transition-colors p-3 rounded-xl text-xs font-bold uppercase tracking-wider text-white mb-4">
           <i class="fa-solid fa-plane"></i>
-          <span>Vissza a járatokhoz</span>
+          <span>Back to flights</span>
         </router-link>
       </div>
 
@@ -144,7 +143,7 @@ onMounted(async () => {
         <div v-if="pendingRequests.length > 0" class="mb-6">
           <div class="flex justify-between items-center text-[9px] text-slate-500 font-bold uppercase tracking-widest pb-2 mb-3 border-b border-flight-border/50">
             <span
-              >Kérelmek: <span class="text-amber-500">{{ pendingRequests.length }}</span></span
+              >Requests: <span class="text-amber-500">{{ pendingRequests.length }}</span></span
             >
           </div>
 
@@ -152,13 +151,13 @@ onMounted(async () => {
             <div v-for="request in pendingRequests" :key="request.id" class="p-3 rounded-xl bg-amber-500/5 border border-amber-500/30 flex justify-between items-center group transition-colors hover:border-amber-500/60">
               <div class="flex flex-col overflow-hidden pr-2">
                 <span class="text-white font-bold text-sm truncate">{{ request.name }}</span>
-                <span class="text-[10px] text-amber-500/80 truncate">Barátnak jelölt</span>
+                <span class="text-[10px] text-amber-500/80 truncate">Friend request</span>
               </div>
               <div class="flex space-x-1 shrink-0">
-                <button @click="acceptRequest(request.id)" class="text-green-500 hover:text-white transition-colors bg-green-500/10 hover:bg-green-500 p-2 rounded-md cursor-pointer" title="Elfogadás">
+                <button @click="acceptRequest(request.id)" class="text-green-500 hover:text-white transition-colors bg-green-500/10 hover:bg-green-500 p-2 rounded-md cursor-pointer" title="Accept">
                   <i class="fa-solid fa-check"></i>
                 </button>
-                <button @click="declineRequest(request.id)" class="text-red-500 hover:text-white transition-colors bg-red-500/10 hover:bg-red-500 p-2 rounded-md cursor-pointer" title="Elutasítás">
+                <button @click="declineRequest(request.id)" class="text-red-500 hover:text-white transition-colors bg-red-500/10 hover:bg-red-500 p-2 rounded-md cursor-pointer" title="Decline">
                   <i class="fa-solid fa-xmark"></i>
                 </button>
               </div>
@@ -169,14 +168,14 @@ onMounted(async () => {
         <div>
           <div class="flex justify-between items-center text-[9px] text-slate-500 font-bold uppercase tracking-widest pb-2 mb-3 border-b border-flight-border/50">
             <span
-              >Hozzáadva: <span class="text-flight-accent">{{ friends.length }}</span></span
+              >Added: <span class="text-flight-accent">{{ friends.length }}</span></span
             >
           </div>
 
           <div v-if="friends.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center bg-flight-card/50 rounded-xl border border-flight-border border-dashed">
             <i class="fa-solid fa-users-slash text-2xl mb-3 opacity-50 text-flight-accent"></i>
-            <p class="text-sm font-bold text-slate-400">Nincsenek barátaid.</p>
-            <p class="text-[10px] uppercase tracking-widest mt-1">Keress valakit oldalt!</p>
+            <p class="text-sm font-bold text-slate-400">No friends yet.</p>
+            <p class="text-[10px] uppercase tracking-widest mt-1">Search for someone on the right!</p>
           </div>
 
           <div class="space-y-2">
@@ -185,7 +184,7 @@ onMounted(async () => {
                 <span class="text-white font-bold text-sm truncate">{{ friend.name }}</span>
                 <span class="text-[10px] text-slate-500 truncate">{{ friend.email }}</span>
               </div>
-              <button @click="removeFriend(friend.id)" class="text-red-500/60 hover:text-red-500 transition-colors bg-red-500/5 hover:bg-red-500/20 p-2 rounded-md cursor-pointer opacity-0 group-hover:opacity-100 ml-2 shrink-0" title="Törlés">
+              <button @click="removeFriend(friend.id)" class="text-red-500/60 hover:text-red-500 transition-colors bg-red-500/5 hover:bg-red-500/20 p-2 rounded-md cursor-pointer opacity-0 group-hover:opacity-100 ml-2 shrink-0" title="Remove">
                 <i class="fa-solid fa-user-xmark"></i>
               </button>
             </div>
@@ -199,19 +198,19 @@ onMounted(async () => {
 
       <div class="max-w-3xl w-full mx-auto mt-20 px-8 relative z-10">
         <div class="text-center mb-10">
-          <h2 class="text-4xl font-black text-white italic tracking-tighter mb-2">Új Testvérek Keresése</h2>
-          <p class="text-slate-500">Írd be a nevet vagy email címet a kereséshez.</p>
+          <h2 class="text-4xl font-black text-white italic tracking-tighter mb-2">Search for Friends</h2>
+          <p class="text-slate-500">Enter name or email to search.</p>
         </div>
 
         <div class="relative mb-12">
           <i class="fa-solid fa-magnifying-glass absolute left-5 top-1/2 transform -translate-y-1/2 text-slate-500 text-lg"></i>
-          <input v-model="searchQuery" type="text" placeholder="Keresés név vagy email alapján..." class="w-full bg-flight-card border-2 border-flight-border rounded-2xl pl-14 pr-6 py-5 text-white focus:outline-none focus:border-flight-accent transition-all shadow-[0_0_30px_rgba(0,0,0,0.5)] placeholder-slate-600 text-lg" />
+          <input v-model="searchQuery" type="text" placeholder="Search by name or email..." class="w-full bg-flight-card border-2 border-flight-border rounded-2xl pl-14 pr-6 py-5 text-white focus:outline-none focus:border-flight-accent transition-all shadow-[0_0_30px_rgba(0,0,0,0.5)] placeholder-slate-600 text-lg" />
           <i v-if="isSearching" class="fa-solid fa-circle-notch fa-spin absolute right-6 top-1/2 transform -translate-y-1/2 text-flight-accent"></i>
         </div>
 
         <div v-if="searchQuery && searchResults.length === 0 && !isSearching" class="text-center py-10">
           <i class="fa-solid fa-ghost text-4xl mb-4 text-slate-600"></i>
-          <p class="text-slate-400 font-bold">Nem találtam ilyet tesó.</p>
+          <p class="text-slate-400 font-bold">No results found.</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -221,9 +220,9 @@ onMounted(async () => {
               <span class="text-xs text-slate-500 truncate">{{ user.email }}</span>
             </div>
 
-            <span v-if="isFriend(user.id)" class="text-[9px] text-green-500 uppercase font-black tracking-widest border border-green-500/20 bg-green-500/5 px-3 py-2 rounded-lg shrink-0"> <i class="fa-solid fa-check mr-1"></i> Barát </span>
-            <span v-else-if="hasPendingRequest(user.id)" class="text-[9px] text-amber-500 uppercase font-black tracking-widest border border-amber-500/20 bg-amber-500/5 px-3 py-2 rounded-lg shrink-0"> <i class="fa-solid fa-clock mr-1"></i> Függőben </span>
-            <button v-else @click="addFriend(user.id)" class="bg-flight-accent/10 hover:bg-flight-accent text-flight-accent hover:text-white border border-flight-accent transition-colors px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer shrink-0">Hozzáadás</button>
+            <span v-if="isFriend(user.id)" class="text-[9px] text-green-500 uppercase font-black tracking-widest border border-green-500/20 bg-green-500/5 px-3 py-2 rounded-lg shrink-0"> <i class="fa-solid fa-check mr-1"></i> Friend </span>
+            <span v-else-if="hasPendingRequest(user.id)" class="text-[9px] text-amber-500 uppercase font-black tracking-widest border border-amber-500/20 bg-amber-500/5 px-3 py-2 rounded-lg shrink-0"> <i class="fa-solid fa-clock mr-1"></i> Pending </span>
+            <button v-else @click="addFriend(user.id)" class="bg-flight-accent/10 hover:bg-flight-accent text-flight-accent hover:text-white border border-flight-accent transition-colors px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider cursor-pointer shrink-0">Add Friend</button>
           </div>
         </div>
       </div>

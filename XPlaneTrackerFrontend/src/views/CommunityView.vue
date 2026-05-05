@@ -146,9 +146,9 @@ const shareFlight = async (id) => {
   if (navigator.clipboard && window.isSecureContext) {
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("Vágólapra másolva.");
+      toast.success("Copied to clipboard.");
     } catch (err) {
-      prompt("Másold ki:", url);
+      prompt("Copy this:", url);
     }
   } else {
     const textArea = document.createElement("textarea");
@@ -162,9 +162,9 @@ const shareFlight = async (id) => {
 
     try {
       document.execCommand("copy");
-      toast.success("Vágólapra másolva.");
+      toast.success("Copied to clipboard.");
     } catch (err) {
-      prompt("Másold ki:", url);
+      prompt("Copy this:", url);
     } finally {
       textArea.remove();
     }
@@ -175,11 +175,11 @@ const saveProfile = async (formData) => {
   try {
     const response = await api.put("/api/user/profile", formData);
     authStore.user = response.data;
-    toast.success("Profil sikeresen frissítve.");
+    toast.success("Profile updated successfully.");
     isProfileModalOpen.value = false;
   } catch (error) {
     console.error(error);
-    toast.error(error.response?.data?.message || "Hiba a profil frissítésekor.");
+    toast.error(error.response?.data?.message || "Error updating profile.");
   }
 };
 
@@ -198,8 +198,8 @@ onMounted(async () => {
         <div class="flex items-center space-x-3 mb-6">
           <div class="w-2 h-8 bg-flight-accent rounded-full shadow-[0_0_10px_#38bdf8]"></div>
           <div>
-            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">SHAVALE</h1>
-            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">Muro phralenge 🍀</p>
+            <h1 class="text-2xl font-black text-white tracking-tighter italic leading-none">COMMUNITY</h1>
+            <p class="text-[10px] text-flight-accent uppercase font-bold tracking-widest mt-1">For the community 🍀</p>
           </div>
         </div>
 
@@ -213,13 +213,13 @@ onMounted(async () => {
       <div class="flex-grow overflow-y-auto px-4 pb-4 space-y-3">
         <div v-if="flights.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center">
           <i class="fa-solid fa-satellite-dish text-2xl mb-3 opacity-50"></i>
-          <p class="text-sm italic">Még egy barátod sem repült...</p>
+          <p class="text-sm italic">None of your friends have flown yet...</p>
         </div>
 
         <div v-else-if="filteredFlights.length === 0" class="text-center py-10 text-slate-600 flex flex-col items-center bg-flight-card/50 rounded-xl border border-flight-border border-dashed">
           <i class="fa-solid fa-plane-slash text-2xl mb-3 opacity-50 text-teal-500"></i>
-          <p class="text-sm font-bold text-slate-400">Nincs itt semmi.</p>
-          <p class="text-[10px] uppercase tracking-widest mt-1">Nem találtam ilyet muro phral</p>
+          <p class="text-sm font-bold text-slate-400">Nothing here.</p>
+          <p class="text-[10px] uppercase tracking-widest mt-1">No results found</p>
         </div>
 
         <FlightCard v-for="flight in filteredFlights" :key="flight.id" :flight="flight" :isSelected="selectedFlightId === flight.id" :isReadonly="true" @click="viewFlight(flight.id)" @share="shareFlight(flight.id)" />

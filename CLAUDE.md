@@ -67,8 +67,9 @@ The web application leverages a `Makefile` to streamline Docker orchestration.
   - **Dependency Management:** If you add new Python dependencies, you **MUST** add them to the `pip install` step in `release.yml` to guarantee a successful build. If PyInstaller struggles to find them, you must also add them as hidden imports in `CSABOLANTA.spec` to prevent runtime errors.
 
 - **UI Text & Language (Critical):**
-  - The existing application UI uses a highly specific, informal Hungarian slang (e.g., "muro phral", "Szia testvér!", "Jo hulye vagy"). **Leave all existing Hungarian text exactly as it is.**
-  - When generating **new** user-facing text, notifications, or error messages, **you must write them in English** unless explicitly instructed otherwise. Do not attempt to write new text in Hungarian slang. I will manually translate your English placeholders into the appropriate style later.
+  - All user-facing text, notifications, and error messages must be written in English.
+  - The application has been fully translated from Hungarian/Lovári slang to professional English.
+  - Maintain this English-only standard for all new features and text.
 
 ## Flight Telemetry Data Schema
 

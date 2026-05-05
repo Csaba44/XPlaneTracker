@@ -45,7 +45,7 @@ const handleSubmit = () => {
 <template>
   <div v-if="isOpen" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[5000] p-4 backdrop-blur-sm">
     <div class="bg-flight-sidebar border border-flight-border p-8 rounded-2xl shadow-2xl w-full max-w-md">
-      <h2 class="text-2xl font-black text-white italic mb-6 uppercase tracking-tighter">Járat Szerkesztése</h2>
+      <h2 class="text-2xl font-black text-white italic mb-6 uppercase tracking-tighter">Edit Flight</h2>
 
       <form @submit.prevent="handleSubmit" class="space-y-4">
         <div class="grid grid-cols-2 gap-4">
@@ -87,8 +87,8 @@ const handleSubmit = () => {
         </div>
 
         <div class="flex space-x-3 pt-6">
-          <button type="button" @click="$emit('close')" class="flex-1 bg-flight-card hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition-colors uppercase tracking-widest text-xs border border-flight-border cursor-pointer">Mégse</button>
-          <button type="submit" class="flex-1 bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-3 rounded-lg transition-colors shadow-lg uppercase tracking-widest text-xs cursor-pointer">Mentés</button>
+          <button type="button" @click="$emit('close')" class="flex-1 bg-flight-card hover:bg-slate-800 text-white font-bold py-3 rounded-lg transition-colors uppercase tracking-widest text-xs border border-flight-border cursor-pointer">Cancel</button>
+          <button type="submit" class="flex-1 bg-flight-accent hover:bg-sky-400 text-flight-bg font-black py-3 rounded-lg transition-colors shadow-lg uppercase tracking-widest text-xs cursor-pointer">Save</button>
         </div>
       </form>
     </div>

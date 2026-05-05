@@ -494,7 +494,7 @@ const drawConnections = async () => {
     airportDots.set(conn.icao1, coords1);
     airportDots.set(conn.icao2, coords2);
 
-    const label = `${conn.icao1} – ${conn.icao2} (${conn.count} járat)`;
+    const label = `${conn.icao1} – ${conn.icao2} (${conn.count} flights)`;
 
     const visLine = L.polyline([coords1, coords2], {
       color: "#94a3b8",
@@ -651,7 +651,7 @@ onMounted(() => {
     <div class="absolute top-4 right-4 z-[1000] flex flex-col items-end">
       <button @click="isLayersMenuOpen = !isLayersMenuOpen" class="bg-slate-900/90 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl border border-slate-700 shadow-2xl flex items-center gap-2 transition-all">
         <i class="fa-solid fa-map text-cyan-400"></i>
-        <span class="font-bold text-xs uppercase tracking-widest">Rétegek</span>
+        <span class="font-bold text-xs uppercase tracking-widest">Layers</span>
         <i class="fa-solid fa-chevron-down text-slate-400 text-[10px] transition-transform ml-1" :class="{ 'rotate-180': isLayersMenuOpen }"></i>
       </button>
 
@@ -659,12 +659,12 @@ onMounted(() => {
         <div class="flex flex-col p-1 gap-0.5">
           <button @click="mapLayer = 'dark'" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', mapLayer === 'dark' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-moon w-3.5 text-center"></i>
-            <span>Sötét</span>
+            <span>Dark</span>
             <span v-if="mapLayer === 'dark'" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
           <button @click="mapLayer = 'satellite'" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', mapLayer === 'satellite' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-satellite w-3.5 text-center"></i>
-            <span>Műhold</span>
+            <span>Satellite</span>
             <span v-if="mapLayer === 'satellite'" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
 
@@ -672,7 +672,7 @@ onMounted(() => {
 
           <button @click="showRunways = !showRunways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showRunways ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-plane-departure w-3.5 text-center"></i>
-            <span>Pályák</span>
+            <span>Runways</span>
             <span v-if="showRunways" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
 
@@ -684,13 +684,13 @@ onMounted(() => {
 
           <button @click="showTaxiways = !showTaxiways" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showTaxiways ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-road w-3.5 text-center"></i>
-            <span>Gurulóutak</span>
+            <span>Taxiways</span>
             <span v-if="showTaxiways" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
           </button>
 
           <button @click="showStands = !showStands" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showStands ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-parking w-3.5 text-center"></i>
-            <span>Állóhelyek</span>
+            <span>Stands</span>
             <span v-if="showStands" class="ml-auto w-1.5 h-1.5 rounded-full bg-amber-400"></span>
           </button>
 
@@ -698,7 +698,7 @@ onMounted(() => {
 
           <button @click="showEvents = !showEvents" :class="['flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all', showEvents ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-transparent']">
             <i class="fa-solid fa-location-dot w-3.5 text-center"></i>
-            <span>Események</span>
+            <span>Events</span>
             <span v-if="showEvents" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
 
@@ -724,12 +724,12 @@ onMounted(() => {
     <div class="absolute bottom-6 left-6 z-[1000] flex flex-col gap-2">
       <button @click="isChartVisible = !isChartVisible" class="bg-slate-900/90 hover:bg-slate-800 text-white px-5 py-2.5 rounded-full border border-slate-700 shadow-2xl flex items-center gap-2 transition-all group">
         <i class="fa-solid fa-chart-line text-cyan-400 group-hover:scale-110 transition-transform"></i>
-        <span class="font-bold text-xs uppercase tracking-widest">Grafikon</span>
+        <span class="font-bold text-xs uppercase tracking-widest">Chart</span>
       </button>
 
       <button @click="showConnections = !showConnections" :class="['px-5 py-2.5 rounded-full border shadow-2xl flex items-center gap-2 transition-all group', showConnections ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/60 text-cyan-300' : 'bg-slate-900/90 hover:bg-slate-800 border-slate-700 text-white']">
         <i :class="['fa-solid fa-route transition-transform group-hover:scale-110', showConnections ? 'text-cyan-400' : 'text-slate-400']"></i>
-        <span class="font-bold text-xs uppercase tracking-widest">Kapcsolatok</span>
+        <span class="font-bold text-xs uppercase tracking-widest">Connections</span>
         <span v-if="showConnections" class="ml-1 w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] animate-pulse"></span>
       </button>
 

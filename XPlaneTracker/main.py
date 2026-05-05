@@ -1121,7 +1121,7 @@ class TrackingScreen(ctk.CTkFrame):
             lines = [f"**{l['fpm']:.0f} fpm** | **{l['g']:.2f} g**" for l in self.landing_buffer]
             payload = {
                 "embeds": [{
-                    "title": f"{self.user_name} muro phral megérkezett, shavale!",
+                    "title": f"{self.user_name} has arrived!",
                     "description": "\n".join(lines),
                     "color": 0x38bdf8,
                     "fields": [
@@ -1426,7 +1426,7 @@ class RichPresenceManager:
     def set_idle(self):
         with self._lock:
             self._pending_update = dict(
-                details="Repülőzzünk, shavale! 🍀",
+                details="Ready for flight 🍀",
                 state="Waiting for flight…",
                 large_image="csabolanta",
                 large_text="CSABOLANTA Flight Tracker",
