@@ -191,6 +191,7 @@ class FlightController extends Controller
             'arr_icao'               => $arr_icao,
             'start_time'             => $data['metadata']['start_time']             ?? null,
             'file_path'              => $path,
+            'schema_version'         => $data['metadata']['schema_version']         ?? null,
         ]);
 
         return response()->json($flight, 201);

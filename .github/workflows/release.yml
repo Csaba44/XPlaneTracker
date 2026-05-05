@@ -19,7 +19,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests pyinstaller python-dotenv pypresence customtkinter darkdetect Pillow SimConnect
+          pip install requests pyinstaller python-dotenv pypresence customtkinter darkdetect Pillow SimConnect winotify
 
       - name: Create .env file
         shell: bash
@@ -27,10 +27,14 @@ jobs:
           echo "DISCORD_WEBHOOK_URL=${{ secrets.DISCORD_WEBHOOK_URL }}" > XPlaneTracker/.env
           echo "DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}" >> XPlaneTracker/.env
 
+      - name: Write version file
+        shell: bash
+        run: echo "${{ github.ref_name }}" | sed 's/^v//' > XPlaneTracker/version.txt
+
       - name: Build EXE
         working-directory: ./XPlaneTracker
         run: >
-          pyinstaller --onedir --windowed --name "CSABOLANTA" --add-data ".env;." --collect-all customtkinter --collect-all SimConnect --hidden-import "darkdetect" --hidden-import "PIL" --hidden-import "PIL._tkinter_finder" --hidden-import "pypresence" --hidden-import "winreg" main.py
+          pyinstaller --onedir --windowed --name "CSABOLANTA" --add-data ".env;." --add-data "version.txt;." --collect-all customtkinter --collect-all SimConnect --hidden-import "darkdetect" --hidden-import "PIL" --hidden-import "PIL._tkinter_finder" --hidden-import "pypresence" --hidden-import "winreg" --hidden-import "winotify" main.py
 
 
       - name: Zip release folder

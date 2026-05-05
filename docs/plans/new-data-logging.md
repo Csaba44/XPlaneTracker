@@ -496,3 +496,13 @@ Open each flight's detail page. Check:
 §4.3 — **approve the phase-detection thresholds** (or specify your own). Once approved, implementation can start.
 
 Everything else in this plan is concrete; if any other section needs changes, call them out and I'll revise here before coding.
+
+
+
+# Task
+Update the
+- Python app at @XPlaneTracker - please make sure it will log everything that I want, fully accross all simulators. Modify the main.py file accurately!
+- Frontend at @XPlaneTrackerFrontend
+- Backend at @XPlaneTrackerAPI
+
+Please make sure to also display next to the EOBT the actual values, and also the diff. Apply this to all times, or simbrief route distance vs actual, etc. You may make 3 columns with Estimated Actual Delta if u want!

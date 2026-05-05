@@ -19,6 +19,7 @@ class Flight extends Model
         'arr_icao',
         'start_time',
         'file_path',
+        'schema_version',
     ];
 
     public function user(): BelongsTo

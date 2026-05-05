@@ -1,8 +1,3 @@
-"""
-CSABOLANTA Flight Tracker — CustomTkinter GUI
-Matches exact flow of original CLI app, with sleek dark UI.
-"""
-
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog
@@ -11,7 +6,6 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 import sys
 
-
 try:
     from pypresence import Presence as DiscordPresence
     _PYPRESENCE_AVAILABLE = True
@@ -19,7 +13,6 @@ except ImportError:
     _PYPRESENCE_AVAILABLE = False
     logging.warning("pypresence not installed — Discord Rich Presence disabled.")
 
-# ── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     filename="log.txt",
     filemode="w",
@@ -39,19 +32,13 @@ try:
 except Exception as e:
     logging.error(f"Dotenv load error: {e}")
 
-# ── CLI Arguments (parsed before GUI launches) ────────────────────────────────
 _parser = argparse.ArgumentParser(description="CSABOLANTA Flight Tracker")
-_parser.add_argument("--host",       type=str, default="127.0.0.1",
-                     help="X-Plane UDP host IP (default: 127.0.0.1)")
-_parser.add_argument("--dev",        action="store_true",
-                     help="Use local dev API (xtracker.local:5173)")
-_parser.add_argument("--no-webhook", action="store_true",
-                     help="Disable Discord webhook notifications")
-_parser.add_argument("--logout",     action="store_true",
-                     help="Clear saved API token and exit")
+_parser.add_argument("--host",       type=str, default="127.0.0.1")
+_parser.add_argument("--dev",        action="store_true")
+_parser.add_argument("--no-webhook", action="store_true")
+_parser.add_argument("--logout",     action="store_true")
 ARGS = _parser.parse_args()
 
-# Handle --logout immediately, before GUI starts
 if ARGS.logout:
     if os.path.exists(".xtracker_token"):
         os.remove(".xtracker_token")
@@ -65,7 +52,6 @@ API_BASE_URL = (
     else "https://api.csabolanta.hu/api"
 )
 
-# ── Theme constants ───────────────────────────────────────────────────────────
 BG          = "#0b0e14"
 SIDEBAR     = "#151921"
 CARD        = "#1c222d"
@@ -80,10 +66,11 @@ GREEN       = "#4ade80"
 YELLOW      = "#fbbf24"
 
 _airports_cache: list | None = None
+
+
 def get_aircraft_name(icao_code: str) -> str:
     if not icao_code or icao_code.strip().lower() in ("", "unknown"):
         return icao_code
-
     try:
         import csv
         r = requests.get(
@@ -98,8 +85,8 @@ def get_aircraft_name(icao_code: str) -> str:
                     return name if name else icao_code
     except Exception as e:
         logging.warning(f"get_aircraft_name failed for '{icao_code}': {e}")
+    return icao_code
 
-    return icao_code  # always fall back to raw ICAO code
 
 def get_airline_name(code: str) -> str:
     if not code or code.lower() == "unknown":
@@ -116,6 +103,7 @@ def get_airline_name(code: str) -> str:
     except Exception:
         pass
     return code
+
 
 def get_nearest_airport_icao(lat: float, lon: float, max_dist_km: float = 10.0) -> str:
     import math
@@ -134,10 +122,10 @@ def get_nearest_airport_icao(lat: float, lon: float, max_dist_km: float = 10.0) 
                 if len(parts) < 6:
                     continue
                 try:
-                    icao = parts[1].strip('"')
+                    icao   = parts[1].strip('"')
                     a_type = parts[2].strip('"')
-                    a_lat = float(parts[4].strip('"'))
-                    a_lon = float(parts[5].strip('"'))
+                    a_lat  = float(parts[4].strip('"'))
+                    a_lon  = float(parts[5].strip('"'))
                 except (ValueError, IndexError):
                     continue
                 if a_type not in ("large_airport", "medium_airport", "small_airport"):
@@ -156,15 +144,13 @@ def get_nearest_airport_icao(lat: float, lon: float, max_dist_km: float = 10.0) 
                 best_dist_km, best_icao = dist_km, icao
 
         if best_dist_km > max_dist_km:
-            logging.warning(f"Nearest airport {best_icao} is {best_dist_km:.1f}km away, exceeds {max_dist_km}km limit")
             return "N/A"
-
         return best_icao
     except Exception as e:
         logging.warning(f"Airport lookup failed: {e}")
         return "N/A"
 
-# ── Providers (lazy import so missing deps don't crash GUI startup) ────────────
+
 def load_provider(sim_choice, host):
     if sim_choice == "X-Plane":
         from xp_provider import XPlaneProvider
@@ -172,6 +158,7 @@ def load_provider(sim_choice, host):
     else:
         from msfs_provider import MSFSProvider
         return MSFSProvider()
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 #  HELPER WIDGETS
@@ -233,7 +220,6 @@ class StyledEntry(ctk.CTkEntry):
 
 
 class LogBox(ctk.CTkTextbox):
-    """High-performance scrolling log — batches UI updates."""
     def __init__(self, parent, **kwargs):
         super().__init__(
             parent,
@@ -267,7 +253,6 @@ class LogBox(ctk.CTkTextbox):
         self.configure(state="normal")
         for line in lines:
             self.insert("end", line + "\n")
-        # keep last 400 lines
         total = int(self.index("end-1c").split(".")[0])
         if total > 400:
             self.delete("1.0", f"{total-400}.0")
@@ -311,7 +296,6 @@ class LoginScreen(ctk.CTkFrame):
         center = ctk.CTkFrame(self, fg_color="transparent")
         center.place(relx=0.5, rely=0.5, anchor="center")
 
-        # Logo
         ctk.CTkLabel(center, text="CSABOLANTA",
                      font=("Georgia", 32, "bold", "italic"),
                      text_color=WHITE).pack(pady=(0, 2))
@@ -319,7 +303,6 @@ class LoginScreen(ctk.CTkFrame):
                      font=("Consolas", 9, "bold"),
                      text_color=ACCENT).pack(pady=(0, 30))
 
-        # Card
         card = ctk.CTkFrame(center, fg_color=SIDEBAR, corner_radius=12,
                              border_width=1, border_color=BORDER, width=380)
         card.pack(padx=0, pady=0)
@@ -342,7 +325,6 @@ class LoginScreen(ctk.CTkFrame):
         AccentButton(inner, text="Authenticate →",
                      command=self._auth).pack(fill="x", pady=(12, 0))
 
-        # Pre-fill saved token
         TOKEN_FILE = ".xtracker_token"
         if os.path.exists(TOKEN_FILE):
             with open(TOKEN_FILE) as f:
@@ -351,7 +333,6 @@ class LoginScreen(ctk.CTkFrame):
             self.key_entry.configure(show="•")
 
     def _set_status(self, text, color):
-        """Safe status update — no-ops if widget was already destroyed."""
         try:
             self.status_lbl.configure(text=text, text_color=color)
         except Exception:
@@ -362,7 +343,7 @@ class LoginScreen(ctk.CTkFrame):
         if not token:
             self._set_status("Enter your API key.", YELLOW)
             return
-        self._set_status("Verifying\u2026", MUTED)
+        self._set_status("Verifying…", MUTED)
 
         def worker():
             try:
@@ -386,7 +367,7 @@ class LoginScreen(ctk.CTkFrame):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-#  SCREEN: SETUP (sim, simbrief, flight info)
+#  SCREEN: SETUP
 # ═════════════════════════════════════════════════════════════════════════════
 
 class SetupScreen(ctk.CTkFrame):
@@ -395,11 +376,11 @@ class SetupScreen(ctk.CTkFrame):
         self.user_name = user_name
         self.on_start = on_start
         self._sb_data = {}
+        self._sb_raw = {}
         self._sb_resolving = 0
         self._build()
 
     def _build(self):
-        # ── Header bar
         bar = ctk.CTkFrame(self, fg_color=SIDEBAR, height=52,
                            corner_radius=0, border_width=0)
         bar.pack(fill="x")
@@ -410,7 +391,6 @@ class SetupScreen(ctk.CTkFrame):
         ctk.CTkLabel(bar, text=f"Welcome, {self.user_name}",
                      font=("Consolas", 11), text_color=ACCENT).pack(side="right", padx=20)
 
-        # ── Two-column setup
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=40, pady=30)
 
@@ -425,7 +405,6 @@ class SetupScreen(ctk.CTkFrame):
         self._build_sim_col(left)
         self._build_flight_col(right)
 
-        # ── Start button
         AccentButton(self, text="▶  Start Tracking",
                      command=self._start, height=44,
                      font=("Consolas", 14, "bold")).pack(
@@ -514,6 +493,9 @@ class SetupScreen(ctk.CTkFrame):
                 atc  = d.get("atc", {})
                 orig = d.get("origin", {})
                 dest = d.get("destination", {})
+                times = d.get("times", {})
+                weights = d.get("weights", {})
+                fuel = d.get("fuel", {})
 
                 airline_code = gen.get("icao_airline", "")
                 flight_no    = gen.get("flight_number", "")
@@ -524,6 +506,31 @@ class SetupScreen(ctk.CTkFrame):
                 dest_icao  = dest.get("icao_code", "")
                 raw_route  = gen.get("route", "")
                 full_route = " ".join(filter(None, [orig_icao, raw_route, dest_icao]))
+
+                def _int(v):
+                    try:
+                        return int(v) if v else None
+                    except (TypeError, ValueError):
+                        return None
+
+                self._sb_raw = {
+                    "eobt":               _int(times.get("sched_out")),
+                    "sched_out":          _int(times.get("sched_out")),
+                    "sched_off":          _int(times.get("sched_off")),
+                    "sched_on":           _int(times.get("sched_on")),
+                    "sched_in":           _int(times.get("sched_in")),
+                    "sched_block_sec":    _int(times.get("sched_block")),
+                    "est_block_sec":      _int(times.get("est_block")),
+                    "planned_route":      full_route,
+                    "planned_oew":        _int(weights.get("oew")),
+                    "planned_zfw":        _int(weights.get("est_zfw")),
+                    "planned_tow":        _int(weights.get("est_tow")),
+                    "planned_ldw":        _int(weights.get("est_ldw")),
+                    "planned_block_fuel": _int(fuel.get("plan_ramp")),
+                    "planned_takeoff_fuel": _int(fuel.get("plan_takeoff")),
+                    "planned_landing_fuel": _int(fuel.get("plan_landing")),
+                    "planned_distance_nm": _int(gen.get("air_distance")),
+                }
 
                 self._sb_data = {
                     "callsign":           callsign,
@@ -542,7 +549,7 @@ class SetupScreen(ctk.CTkFrame):
                     ("reg",       ac.get("reg", "")),
                     ("route",     full_route),
                     ("ac_type",   ac_type_raw),
-                    ("airline",   airline_code),  # raw code shown first, resolved below
+                    ("airline",   airline_code),
                 ]:
                     self._entries[key].delete(0, "end")
                     self._entries[key].insert(0, val)
@@ -565,9 +572,7 @@ class SetupScreen(ctk.CTkFrame):
         except Exception as e:
             self.sb_status.configure(text=f"Error: {e}", text_color=RED)
 
-    def _sb_resolve_done(self, field: str | None, value: str | None):
-        """Called on the main thread when an async SimBrief lookup finishes.
-        field/value are None for ac_type_full since we don't update the entry."""
+    def _sb_resolve_done(self, field, value):
         if field is not None and value is not None:
             self._entries[field].delete(0, "end")
             self._entries[field].insert(0, value)
@@ -576,8 +581,6 @@ class SetupScreen(ctk.CTkFrame):
             self.sb_status.configure(text="✔ SimBrief data loaded", text_color=GREEN)
 
     def _start(self):
-        # Always read from the entry — it's the source of truth regardless of
-        # whether SimBrief filled it or the user typed it manually.
         ac_type_raw = self._entries["ac_type"].get().strip() or "unknown"
 
         cfg = {
@@ -592,6 +595,7 @@ class SetupScreen(ctk.CTkFrame):
             "route":        self._entries["route"].get().strip(),
             "dep":          self._sb_data.get("dep", ""),
             "arr":          self._sb_data.get("arr", ""),
+            "sb_raw":       self._sb_raw if self._sb_raw else None,
         }
 
         def resolve_and_start():
@@ -602,32 +606,102 @@ class SetupScreen(ctk.CTkFrame):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+#  DIALOG: STOP
+# ═════════════════════════════════════════════════════════════════════════════
+
+class StopDialog(ctk.CTkToplevel):
+    def __init__(self, parent, on_upload, on_save_only, on_cancel):
+        super().__init__(parent)
+        self.on_upload    = on_upload
+        self.on_save_only = on_save_only
+        self.on_cancel    = on_cancel
+
+        self.title("Flight Stopped")
+        self.geometry("380x210")
+        self.resizable(False, False)
+        self.configure(fg_color=SIDEBAR)
+
+        self.after(100, self.grab_set)
+        self.after(150, self.lift)
+        self.after(150, self.focus_force)
+
+        self._build()
+
+    def _build(self):
+        ctk.CTkLabel(self, text="Flight stopped.",
+                     font=("Georgia", 16, "bold"),
+                     text_color=WHITE).pack(pady=(28, 4))
+        ctk.CTkLabel(self, text="What would you like to do?",
+                     font=("Consolas", 11),
+                     text_color=MUTED).pack(pady=(0, 20))
+
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack()
+        AccentButton(row, text="Upload now",  command=self._upload).pack(side="left", padx=6)
+        GhostButton(row,  text="Save only",   command=self._save).pack(side="left", padx=6)
+        GhostButton(row,  text="Cancel",      command=self._cancel).pack(side="left", padx=6)
+
+    def _upload(self):
+        self.destroy()
+        if self.on_upload:
+            self.on_upload()
+
+    def _save(self):
+        self.destroy()
+        if self.on_save_only:
+            self.on_save_only()
+
+    def _cancel(self):
+        self.destroy()
+        if self.on_cancel:
+            self.on_cancel()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 #  SCREEN: TRACKING
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TrackingScreen(ctk.CTkFrame):
     def __init__(self, parent, cfg, token, api_base, user_name):
         super().__init__(parent, fg_color=BG)
-        self.cfg = cfg
-        self.token = token
-        self.api_base = api_base
+        self.cfg       = cfg
+        self.token     = token
+        self.api_base  = api_base
         self.user_name = user_name
 
-        self.flight_path_data = {
-            "metadata": {
-                "callsign":              cfg["callsign"],
-                "flight_number":         cfg["flight_no"],
-                "airline":               cfg["airline"],
-                "aircraft_registration": cfg["reg"],
-                "aircraft_type":         cfg["ac_type"],   # raw ICAO code
-                "route":                 cfg.get("route", ""),
-                "simulator":             cfg["sim"],
-                "start_time":            datetime.now().isoformat(),
-                "columns": ["timestamp", "lat", "lon", "alt", "speed"],
-            },
-            "path": [],
-            "landings": [],
+        from version import APP_VERSION, SCHEMA_VERSION
+        from flight_state import FlightStateMachine
+        from flight_aggregator import FlightAggregator
+
+        meta = {
+            "schema_version":        SCHEMA_VERSION,
+            "app_version":           APP_VERSION,
+            "callsign":              cfg["callsign"],
+            "flight_number":         cfg["flight_no"],
+            "airline":               cfg["airline"],
+            "aircraft_registration": cfg["reg"],
+            "aircraft_type":         cfg["ac_type"],
+            "route":                 cfg.get("route", ""),
+            "simulator":             cfg["sim"],
+            "start_time":            datetime.now().isoformat(),
+            "columns": ["timestamp", "lat", "lon", "alt", "speed",
+                        "alt_baro", "heading_true", "heading_mag"],
         }
+
+        if cfg.get("sb_raw"):
+            meta["simbrief"] = cfg["sb_raw"]
+
+        self.flight_path_data = {
+            "metadata": meta,
+            "path":     [],
+            "landings": [],
+            "events":   [],
+            "phases":   [],
+        }
+
+        self._state_machine = FlightStateMachine()
+        self._state_machine.set_replay_callback(self._on_replay_detected)
+        self._aggregator = FlightAggregator()
 
         self.current_telemetry = {}
         self.landing_buffer = []
@@ -635,6 +709,7 @@ class TrackingScreen(ctk.CTkFrame):
         self.buffer_timer = None
         self._tracking = True
         self._provider = None
+        self._stop_dialog_open = False
 
         self._last_lat = self._last_lon = self._last_alt = self._last_speed = None
         self._last_log_time = 0
@@ -647,10 +722,12 @@ class TrackingScreen(ctk.CTkFrame):
         self._build()
         self._start_tracking()
 
-    # ── Layout ────────────────────────────────────────────────────────────────
+    def _on_replay_detected(self):
+        from notifications import notify
+        notify("Replay Detected",
+               "Replay mode active — your flight is still recording but won't reflect real piloting.")
 
     def _build(self):
-        # Header
         bar = ctk.CTkFrame(self, fg_color=SIDEBAR, height=52, corner_radius=0)
         bar.pack(fill="x")
         bar.pack_propagate(False)
@@ -679,29 +756,24 @@ class TrackingScreen(ctk.CTkFrame):
                                         font=("Consolas", 11), text_color=MUTED)
         self.status_lbl.pack(side="left")
 
-        # Body: sidebar + log
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=16, pady=12)
 
-        # Left sidebar
         sidebar = ctk.CTkFrame(body, fg_color=SIDEBAR, corner_radius=12,
                                border_width=1, border_color=BORDER, width=220)
         sidebar.pack(side="left", fill="y", padx=(0, 12))
         sidebar.pack_propagate(False)
         self._build_sidebar(sidebar)
 
-        # Right: telemetry + log
         right = ctk.CTkFrame(body, fg_color="transparent")
         right.pack(side="left", fill="both", expand=True)
 
-        # Telemetry strip
         telem = ctk.CTkFrame(right, fg_color=SIDEBAR, corner_radius=10,
                               border_width=1, border_color=BORDER, height=70)
         telem.pack(fill="x", pady=(0, 10))
         telem.pack_propagate(False)
         self._build_telemetry(telem)
 
-        # Log
         log_header = ctk.CTkFrame(right, fg_color="transparent", height=24)
         log_header.pack(fill="x")
         SectionLabel(log_header, "Live Log").pack(side="left")
@@ -709,7 +781,6 @@ class TrackingScreen(ctk.CTkFrame):
         self.logbox = LogBox(right)
         self.logbox.pack(fill="both", expand=True)
 
-        # Stop button
         GhostButton(self, text="■  Stop & Upload",
                     text_color=RED, border_color=RED,
                     hover_color="#2a1a1a",
@@ -719,7 +790,6 @@ class TrackingScreen(ctk.CTkFrame):
         p = ctk.CTkFrame(parent, fg_color="transparent")
         p.pack(fill="both", expand=True, padx=14, pady=14)
 
-        # Flight badge — shows raw ICAO ac_type code
         badge = ctk.CTkFrame(p, fg_color=CARD, corner_radius=8,
                               border_width=1, border_color=BORDER)
         badge.pack(fill="x", pady=(0, 14))
@@ -727,16 +797,13 @@ class TrackingScreen(ctk.CTkFrame):
                      font=("Georgia", 18, "bold"), text_color=WHITE).pack(pady=(10, 2))
         ctk.CTkLabel(badge, text=self.cfg["flight_no"],
                      font=("Consolas", 10), text_color=ACCENT).pack(pady=(0, 4))
-        ctk.CTkLabel(badge, text=self.cfg["ac_type"],  # raw ICAO code
+        ctk.CTkLabel(badge, text=self.cfg["ac_type"],
                      font=("Consolas", 10), text_color=MUTED).pack(pady=(0, 4))
 
         route_str = self.cfg.get("route", "")
         if route_str:
             parts = route_str.split()
-            if len(parts) >= 2:
-                route_display = f"{parts[0]} → {parts[-1]}"
-            else:
-                route_display = route_str
+            route_display = f"{parts[0]} → {parts[-1]}" if len(parts) >= 2 else route_str
             ctk.CTkLabel(badge, text=route_display,
                          font=("Consolas", 9), text_color=MUTED).pack(pady=(0, 10))
         else:
@@ -795,8 +862,6 @@ class TrackingScreen(ctk.CTkFrame):
         for c in range(len(fields)*2-1):
             inner.columnconfigure(c, weight=1 if c % 2 == 0 else 0)
 
-    # ── Tracking core ─────────────────────────────────────────────────────────
-
     def _start_tracking(self):
         def worker():
             try:
@@ -804,7 +869,6 @@ class TrackingScreen(ctk.CTkFrame):
                 self._provider.connect()
                 self._update_status("● Tracking", GREEN)
                 self._log(f"Connected to {self.cfg['sim']}")
-                # RPC: use ac_type_full (full name) if available, else fall back to raw ICAO
                 rpc.update(
                     callsign=self.cfg.get("callsign", ""),
                     aircraft=self.cfg.get("ac_type_full") or self.cfg.get("ac_type", ""),
@@ -819,10 +883,8 @@ class TrackingScreen(ctk.CTkFrame):
                 self._log(f"ERROR: {e}")
                 return
 
-            # Landing monitor
             threading.Thread(target=self._landing_monitor, daemon=True).start()
 
-            # Telemetry loop
             while self._tracking:
                 try:
                     data = self._provider.get_telemetry()
@@ -839,11 +901,19 @@ class TrackingScreen(ctk.CTkFrame):
                     speed = data.get("gs")
                     now   = time.time()
 
-                    # Autosave every 2 min
+                    self._aggregator.tick(data, now)
+
+                    self._state_machine.tick(data, now)
+                    new_events = self._state_machine.get_and_clear_events()
+                    if new_events:
+                        self.flight_path_data["events"].extend(new_events)
+                    new_phases = self._state_machine.get_and_clear_phases()
+                    if new_phases:
+                        self.flight_path_data["phases"].extend(new_phases)
+
                     if now - self._last_autosave_time > 120:
                         self._autosave()
 
-                    # Update telemetry display (throttled via after)
                     self.after(0, self._update_telem, lat, lon, alt, speed)
 
                     if lat is not None and lon is not None:
@@ -861,13 +931,24 @@ class TrackingScreen(ctk.CTkFrame):
                                 should_record = True
 
                         if should_record:
-                            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+                            alt_baro     = data.get("alt_baro")
+                            heading_true = data.get("heading_true")
+                            heading_mag  = data.get("heading_mag")
+
+                            ts_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
                             self._log(
-                                f"{ts}  LAT:{lat:.5f}  LON:{lon:.5f}  ALT:{alt}ft  GS:{safe_speed}kts"
+                                f"{ts_str}  LAT:{lat:.5f}  LON:{lon:.5f}  ALT:{alt}ft  GS:{safe_speed}kts"
                             )
-                            self.flight_path_data["path"].append(
-                                [round(now, 2), round(lat, 5), round(lon, 5), alt, safe_speed]
-                            )
+                            self.flight_path_data["path"].append([
+                                round(now, 2),
+                                round(lat, 5),
+                                round(lon, 5),
+                                alt,
+                                safe_speed,
+                                int(alt_baro) if alt_baro is not None else None,
+                                round(heading_true, 1) if heading_true is not None else None,
+                                round(heading_mag, 1) if heading_mag is not None else None,
+                            ])
                             self._last_lat, self._last_lon = lat, lon
                             self._last_alt, self._last_speed = alt, speed
                             self._last_log_time = now
@@ -891,14 +972,51 @@ class TrackingScreen(ctk.CTkFrame):
                     if not was_on_ground and on_ground:
                         fpm     = data.get("fpm", 0)
                         g_force = data.get("gforce", 0)
+                        lat     = data.get("lat", 0)
+                        lon     = data.get("lon", 0)
+                        pitch   = data.get("pitch")
+                        roll    = data.get("roll")
+                        ias     = data.get("ias")
+                        gs_val  = data.get("gs")
+                        hdg     = data.get("heading_true")
+
                         self._log(f"LANDING  {fpm:+.0f} FPM  {g_force:.2f}G")
-                        self.flight_path_data["landings"].append({
+
+                        landing_entry = {
                             "timestamp": round(time.time(), 2),
-                            "fpm": round(fpm, 2),
-                            "g_force": round(g_force, 2),
-                            "lat": round(data.get("lat", 0), 5),
-                            "lon": round(data.get("lon", 0), 5),
-                        })
+                            "fpm":       round(fpm, 2),
+                            "g_force":   round(g_force, 2),
+                            "lat":       round(lat, 5),
+                            "lon":       round(lon, 5),
+                        }
+                        if pitch is not None:
+                            landing_entry["pitch"] = round(pitch, 1)
+                        if roll is not None:
+                            landing_entry["roll"] = round(roll, 1)
+                        if ias is not None:
+                            landing_entry["ias"] = int(ias)
+                        if gs_val is not None:
+                            landing_entry["gs"] = int(gs_val)
+
+                        def enrich_landing(entry=landing_entry, cur_lat=lat, cur_lon=lon, cur_hdg=hdg):
+                            import airport_db as adb
+                            ap = adb.nearest_airport(cur_lat, cur_lon, max_dist_km=15.0)
+                            if ap:
+                                entry["airport_icao"] = ap["icao"]
+                                entry["airport_name"] = ap["name"]
+                                if cur_hdg is not None:
+                                    rwy_ident, offset_m = adb.nearest_runway_with_threshold(
+                                        ap["icao"], cur_lat, cur_lon, cur_hdg
+                                    )
+                                    if rwy_ident:
+                                        entry["runway_ident"] = rwy_ident
+                                    if offset_m is not None:
+                                        entry["touchdown_offset_m"] = offset_m
+                            entry["rollout_m"] = self._measure_rollout()
+
+                        threading.Thread(target=enrich_landing, daemon=True).start()
+
+                        self.flight_path_data["landings"].append(landing_entry)
                         self.after(0, self._add_landing_card, fpm, g_force)
 
                         with self.buffer_lock:
@@ -911,6 +1029,34 @@ class TrackingScreen(ctk.CTkFrame):
             except Exception as e:
                 logging.error(f"Landing monitor error: {e}")
             time.sleep(0.1)
+
+    def _measure_rollout(self) -> int | None:
+        start = time.time()
+        gs_samples = []
+        low_speed_start = None
+        while self._tracking:
+            data = self.current_telemetry
+            gs = data.get("gs") or 0
+            on_ground = data.get("on_ground", True)
+            if not on_ground:
+                break
+            gs_samples.append(gs)
+            if gs < 30:
+                if low_speed_start is None:
+                    low_speed_start = time.time()
+                elif time.time() - low_speed_start >= 5.0:
+                    break
+            else:
+                low_speed_start = None
+            if time.time() - start > 180:
+                break
+            time.sleep(0.1)
+        if not gs_samples:
+            return None
+        avg_gs_kts = sum(gs_samples) / len(gs_samples)
+        duration_s = len(gs_samples) * 0.1
+        rollout_nm = avg_gs_kts * (duration_s / 3600.0)
+        return int(rollout_nm * 1852)
 
     def _add_landing_card(self, fpm, g_force):
         if self._no_landing_lbl:
@@ -970,7 +1116,7 @@ class TrackingScreen(ctk.CTkFrame):
             return
         meta = self.flight_path_data.get("metadata", {})
         last = self.flight_path_data["landings"][-1] if self.flight_path_data["landings"] else {}
-        arr_icao = get_nearest_airport_icao(last.get("lat", 0), last.get("lon", 0)) if last else "N/A"
+        arr_icao = last.get("airport_icao") or get_nearest_airport_icao(last.get("lat", 0), last.get("lon", 0))
         with self.buffer_lock:
             lines = [f"**{l['fpm']:.0f} fpm** | **{l['g']:.2f} g**" for l in self.landing_buffer]
             payload = {
@@ -998,9 +1144,30 @@ class TrackingScreen(ctk.CTkFrame):
             self.landing_buffer = []
             self.buffer_timer = None
 
-    # ── Stop & upload ─────────────────────────────────────────────────────────
+    def _finalize_metadata(self):
+        now = time.time()
+        self._state_machine.finalize(now)
+        new_phases = self._state_machine.get_and_clear_phases()
+        if new_phases:
+            self.flight_path_data["phases"].extend(new_phases)
 
-    def _stop(self):
+        sched_in = None
+        sb = self.flight_path_data["metadata"].get("simbrief")
+        if sb:
+            sched_in = sb.get("sched_in")
+
+        agg = self._aggregator.finalize(sched_in=sched_in)
+        meta = self.flight_path_data["metadata"]
+        if agg.get("timing"):
+            meta["timing"] = agg["timing"]
+        if agg.get("summary"):
+            meta["summary"] = agg["summary"]
+        if agg.get("weights"):
+            meta["weights"] = agg["weights"]
+        if agg.get("fuel"):
+            meta["fuel"] = agg["fuel"]
+
+    def _do_stop_tracking(self):
         self._tracking = False
         rpc.set_idle()
         if self._provider:
@@ -1008,25 +1175,51 @@ class TrackingScreen(ctk.CTkFrame):
                 self._provider.close()
             except Exception:
                 pass
+        self._finalize_metadata()
+        self._update_status("Stopped", MUTED)
 
-        final = f"{self._base_filename}.json.gz"
+    def _stop(self):
+        if self._stop_dialog_open:
+            return
+        self._stop_dialog_open = True
+
+        final   = f"{self._base_filename}.json.gz"
         autosave = f"{self._base_filename}_autosaved.json.gz"
-        self._save_to_disk(final)
-        self._log(f"Saved → {final}")
 
-        if os.path.exists(autosave):
-            try:
-                os.remove(autosave)
-            except Exception:
-                pass
+        def on_upload():
+            self._stop_dialog_open = False
+            self._do_stop_tracking()
+            self._save_to_disk(final)
+            self._log(f"Saved → {final}")
+            if os.path.exists(autosave):
+                try:
+                    os.remove(autosave)
+                except Exception:
+                    pass
+            self._update_status("Uploading…", YELLOW)
+            app_root = self.winfo_toplevel()
+            UploadDialog(self, final, self.token, self.api_base,
+                         self.cfg.get("reg", ""), self.cfg.get("ac_type", ""),
+                         self.cfg.get("route", ""),
+                         on_done=lambda: app_root.after(0, app_root._show_setup))
 
-        self._update_status("Uploading…", YELLOW)
+        def on_save():
+            self._stop_dialog_open = False
+            self._do_stop_tracking()
+            self._save_to_disk(final)
+            self._log(f"Saved → {final}")
+            if os.path.exists(autosave):
+                try:
+                    os.remove(autosave)
+                except Exception:
+                    pass
+            app_root = self.winfo_toplevel()
+            app_root.after(0, app_root._show_setup)
 
-        app_root = self.winfo_toplevel()
-        UploadDialog(self, final, self.token, self.api_base,
-                     self.cfg.get("reg", ""), self.cfg.get("ac_type", ""),
-                     self.cfg.get("route", ""),
-                     on_done=lambda: app_root.after(0, app_root._show_setup))
+        def on_cancel():
+            self._stop_dialog_open = False
+
+        StopDialog(self, on_upload=on_upload, on_save_only=on_save, on_cancel=on_cancel)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1037,12 +1230,12 @@ class UploadDialog(ctk.CTkToplevel):
     def __init__(self, parent, filepath, token, api_base, reg, ac_type, route="", on_done=None):
         super().__init__(parent)
         self.filepath = filepath
-        self.token = token
+        self.token    = token
         self.api_base = api_base
-        self.reg = reg
-        self.ac_type = ac_type  # raw ICAO code — sent to API
-        self.route = route
-        self.on_done = on_done
+        self.reg      = reg
+        self.ac_type  = ac_type
+        self.route    = route
+        self.on_done  = on_done
 
         self.title("Upload Flight")
         self.geometry("420x260")
@@ -1136,16 +1329,8 @@ class UploadDialog(ctk.CTkToplevel):
 
 DISCORD_CLIENT_ID = os.getenv("DISCORD_CLIENT_ID")
 
-class RichPresenceManager:
-    """Runs pypresence in its own thread.
-    
-    Discord display:
-      details : "WZZ1234  |  LHBP → EGLL"
-      state   : "Wizz Air · Boeing 777-200ER · HA-LWS"
-    
-    ac_type_full (full aircraft name) is used here — raw ICAO code everywhere else.
-    """
 
+class RichPresenceManager:
     def __init__(self):
         self._rpc = None
         self._running = False
@@ -1174,22 +1359,18 @@ class RichPresenceManager:
         return result
 
     def _worker(self):
-        print(f"[RPC] worker started")
-
         while self._running:
             if not self._connected:
                 try:
                     self._rpc = DiscordPresence(DISCORD_CLIENT_ID)
                     self._call(self._rpc.connect)
                     self._connected = True
-                    print("[RPC] connected to Discord!")
                     logging.info("Discord RPC connected.")
                     try:
-                        rpc.set_idle();
+                        rpc.set_idle()
                     except Exception as ie:
-                        print(f"[RPC] idle presence failed: {ie}")
+                        logging.warning(f"RPC idle presence failed: {ie}")
                 except Exception as e:
-                    print(f"[RPC] connect failed: {e}")
                     logging.warning(f"Discord RPC connect failed: {e}")
                     self._rpc = None
                     self._connected = False
@@ -1204,12 +1385,9 @@ class RichPresenceManager:
                 try:
                     if kwargs == {}:
                         self._call(self._rpc.clear)
-                        print("[RPC] presence cleared")
                     else:
                         self._call(self._rpc.update, **kwargs)
-                        print(f"[RPC] presence updated: {kwargs.get('details')} / {kwargs.get('state')}")
                 except Exception as e:
-                    print(f"[RPC] update/clear failed: {e}")
                     logging.warning(f"Discord RPC update failed: {e}")
                     self._connected = False
                     self._rpc = None
@@ -1224,24 +1402,14 @@ class RichPresenceManager:
             pass
 
     def update(self, callsign="", aircraft="", registration="", airline="", dep="", arr="", state="Flying"):
-        """
-        aircraft  — pass cfg["ac_type_full"] if available, else cfg["ac_type"]
-                    (full name shown in Discord, ICAO code used as fallback)
-        airline   — full airline name (already resolved before this is called)
-        dep/arr   — ICAO airport codes from SimBrief
-        """
         if not _PYPRESENCE_AVAILABLE:
             return
-
-        # Details line: "WZZ1234  |  LHBP → EGLL"
         route_part = f"  |  {dep} → {arr}" if dep and arr else ""
         details = (
             f"{callsign}{route_part}"
             if callsign and callsign != "unknown"
             else f"In flight{route_part}"
         )
-
-        # State line: "Wizz Air · Boeing 777-200ER · HA-LWS"
         parts = [p for p in [airline, aircraft, registration] if p and p != "unknown"]
         state_str = " · ".join(parts) if parts else "CSABOLANTA"
 
@@ -1256,7 +1424,6 @@ class RichPresenceManager:
             )
 
     def set_idle(self):
-        """Return to idle presence (called after a flight ends)."""
         with self._lock:
             self._pending_update = dict(
                 details="Repülőzzünk, shavale! 🍀",
@@ -1267,15 +1434,13 @@ class RichPresenceManager:
             )
 
     def clear(self):
-        """Fully clear presence (called on app exit or disconnect)."""
         with self._lock:
-            self._pending_update = {}  # sentinel → rpc.clear() on next worker tick
+            self._pending_update = {}
 
     def stop(self):
         self._running = False
 
 
-# Global RPC instance — created once, shared across screens
 rpc = RichPresenceManager()
 
 
@@ -1371,10 +1536,6 @@ class App(ctk.CTk):
         screen.pack(fill="both", expand=True)
         self._current_screen = screen
 
-
-# ═════════════════════════════════════════════════════════════════════════════
-#  ENTRY
-# ═════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     app = App()
