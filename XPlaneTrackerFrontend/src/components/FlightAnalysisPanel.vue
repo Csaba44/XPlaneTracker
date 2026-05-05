@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import ApproachAnalysisTab from './ApproachAnalysisTab.vue'
+import DepartureAnalysisTab from './DepartureAnalysisTab.vue'
 import GeneralDataTab from './GeneralDataTab.vue'
 
 const props = defineProps({
@@ -48,9 +49,7 @@ const tabs = [
     <div class="flex-grow overflow-hidden">
       <GeneralDataTab v-if="activeTab === 'general'" :flightData="flightData" class="h-full" />
 
-      <div v-else-if="activeTab === 'departure'" class="flex items-center justify-center h-full">
-        <p class="text-flight-muted text-sm">No data available</p>
-      </div>
+      <DepartureAnalysisTab v-else-if="activeTab === 'departure'" :flightData="flightData" class="h-full" />
 
       <ApproachAnalysisTab v-else-if="activeTab === 'approach'" :flightData="flightData" class="h-full" />
     </div>

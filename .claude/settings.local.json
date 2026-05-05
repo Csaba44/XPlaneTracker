@@ -10,7 +10,8 @@
       "Bash(./artisan migrate:status)",
       "Bash(./artisan migrate *)",
       "Bash(python3 *)",
-      "Bash(xargs -I{} basename {})"
+      "Bash(xargs -I{} basename {})",
+      "Bash(npx vite *)"
     ]
   }
 }

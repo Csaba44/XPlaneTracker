@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   flightData: { type: Object, default: null },
@@ -7,6 +7,35 @@ const props = defineProps({
 
 const activeFilter = ref('all')
 const expandedItems = ref(new Set())
+
+const TYPE_TOGGLE_KEYS = ['engine_start', 'engine_shutdown', 'liftoff', 'gear_up', 'gear_down', 'flaps_set', 'stall', 'touch_and_go']
+const DEFAULT_OFF = new Set(['flaps_set', 'gear_up', 'gear_down'])
+const STORAGE_KEY = 'flightTimeline_eventTypes'
+
+const loadEnabledTypes = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const arr = JSON.parse(raw)
+      if (Array.isArray(arr)) return new Set(arr)
+    }
+  } catch {}
+  return new Set(TYPE_TOGGLE_KEYS.filter((t) => !DEFAULT_OFF.has(t)))
+}
+
+const enabledTypes = ref(loadEnabledTypes())
+const showTypeMenu = ref(false)
+
+const toggleType = (t) => {
+  const next = new Set(enabledTypes.value)
+  if (next.has(t)) next.delete(t)
+  else next.add(t)
+  enabledTypes.value = next
+}
+
+watch(enabledTypes, (val) => {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...val])) } catch {}
+}, { deep: true })
 
 const toggleExpand = (id) => {
   const newSet = new Set(expandedItems.value)
@@ -130,10 +159,11 @@ const FILTERS = [
 ]
 
 const displayed = computed(() => {
-  if (activeFilter.value === 'phases')   return allItems.value.filter((i) => i.kind === 'phase')
-  if (activeFilter.value === 'events')   return allItems.value.filter((i) => i.kind === 'event')
-  if (activeFilter.value === 'critical') return allItems.value.filter((i) => i.critical)
-  return allItems.value
+  let items = allItems.value
+  if (activeFilter.value === 'phases')        items = items.filter((i) => i.kind === 'phase')
+  else if (activeFilter.value === 'events')   items = items.filter((i) => i.kind === 'event')
+  else if (activeFilter.value === 'critical') items = items.filter((i) => i.critical)
+  return items.filter((i) => i.kind !== 'event' || enabledTypes.value.has(i.type))
 })
 
 const isAllExpanded = computed(() => {
@@ -172,6 +202,35 @@ const hasData = computed(() => rawEvents.value.length > 0 || rawPhases.value.len
       >{{ f.label }}</button>
 
       <div v-if="hasData" class="w-px h-4 bg-flight-border/60 mx-1"></div>
+
+      <div v-if="hasData" class="relative">
+        <button
+          @click="showTypeMenu = !showTypeMenu"
+          class="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all border border-transparent text-flight-muted hover:text-white hover:bg-flight-card/50 flex items-center gap-1.5"
+          title="Configure visible event types"
+        >
+          <i class="fa-solid fa-sliders"></i>
+          Event Types
+          <i :class="['fa-solid fa-chevron-down text-[8px] transition-transform', showTypeMenu && 'rotate-180']"></i>
+        </button>
+        <div v-if="showTypeMenu" class="absolute z-30 mt-1 left-0 w-56 bg-flight-card border border-flight-border rounded-xl shadow-2xl p-1.5 flex flex-col gap-0.5">
+          <button
+            v-for="t in TYPE_TOGGLE_KEYS"
+            :key="t"
+            @click="toggleType(t)"
+            :class="[
+              'flex items-center gap-2 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all border',
+              enabledTypes.has(t)
+                ? 'bg-flight-accent/20 border-flight-accent/40 text-flight-accent'
+                : 'border-transparent text-slate-500 hover:bg-flight-card/60'
+            ]"
+          >
+            <i :class="['fa-solid w-3 text-center', EVENT_META[t]?.icon, enabledTypes.has(t) ? EVENT_META[t]?.color : '']"></i>
+            <span class="flex-1 text-left">{{ EVENT_META[t]?.label }}</span>
+            <i v-if="enabledTypes.has(t)" class="fa-solid fa-check text-[9px]"></i>
+          </button>
+        </div>
+      </div>
 
       <button
         v-if="hasData"

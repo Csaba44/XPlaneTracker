@@ -57,6 +57,18 @@ const showGates = ref(getStorage("flightMap_showGates", false));
 const showExtendedCenterline = ref(getStorage("flightMap_showExtendedCenterline", false));
 const showEvents = ref(getStorage("flightMap_showEvents", true));
 
+const TYPE_TOGGLE_KEYS = ['engine_start', 'engine_shutdown', 'liftoff', 'gear_up', 'gear_down', 'flaps_set', 'stall', 'touch_and_go'];
+const DEFAULT_OFF_TYPES = new Set(['flaps_set', 'gear_up', 'gear_down']);
+const eventTypeEnabled = ref(Object.fromEntries(
+  TYPE_TOGGLE_KEYS.map((t) => [t, getStorage(`flightMap_eventType_${t}`, !DEFAULT_OFF_TYPES.has(t))])
+));
+
+const toggleEventType = (t) => {
+  eventTypeEnabled.value = { ...eventTypeEnabled.value, [t]: !eventTypeEnabled.value[t] };
+  localStorage.setItem(`flightMap_eventType_${t}`, JSON.stringify(eventTypeEnabled.value[t]));
+  if (props.flightData) drawFlight(props.flightData);
+};
+
 const isLayersMenuOpen = ref(false);
 
 let map = null;
@@ -391,7 +403,8 @@ const drawFlight = (data) => {
 
   if (data.events?.length) {
     data.events.forEach((evt) => {
-      if (evt.type === 'touchdown' || evt.type === 'phase_change') return; // Skip touchdown (drawn as landing) and phase changes
+      if (evt.type === 'touchdown' || evt.type === 'phase_change') return;
+      if (eventTypeEnabled.value[evt.type] === false) return;
       const coord = findClosestCoord(evt.ts, rawPath);
       if (!coord) return;
 
@@ -684,6 +697,22 @@ onMounted(() => {
             <span>Események</span>
             <span v-if="showEvents" class="ml-auto w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
           </button>
+
+          <div v-if="showEvents" class="ml-3 mt-0.5 mb-1 pl-2 border-l border-slate-700/60 flex flex-col gap-0.5">
+            <button
+              v-for="t in TYPE_TOGGLE_KEYS"
+              :key="t"
+              @click="toggleEventType(t)"
+              :class="[
+                'flex items-center gap-2 px-2 py-1 rounded-md text-[11px] font-semibold transition-all',
+                eventTypeEnabled[t] ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-600 hover:text-slate-400 hover:bg-slate-800/50'
+              ]"
+            >
+              <i :class="['fa-solid w-3 text-center text-[10px]', EVENT_META[t]?.icon, eventTypeEnabled[t] ? EVENT_META[t]?.color : '']"></i>
+              <span class="flex-1 text-left">{{ EVENT_META[t]?.label }}</span>
+              <i v-if="eventTypeEnabled[t]" class="fa-solid fa-check text-[9px] text-cyan-400"></i>
+            </button>
+          </div>
         </div>
       </div>
     </div>
