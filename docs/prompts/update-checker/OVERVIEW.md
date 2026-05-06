@@ -25,3 +25,6 @@ After we agreed on a plan, you should make a relase guide under @docs telling me
 
 # Task 2
 Windows currently detects built binearies as viruses. Please walk me through how we will sign the bineary, and how will we make sure it is not detected as a virus as it has no malicious intent.
+
+# Task 3
+Please make sure to save the user's last simulator choice in some settings file, and load it whenever a new flight is started or the app is opened!
